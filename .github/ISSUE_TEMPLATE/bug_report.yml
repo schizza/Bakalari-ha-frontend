@@ -1,0 +1,34 @@
+name: Bug report
+description: Nahlásit chybu
+labels: [bug]
+body:
+  - type: textarea
+    id: desc
+    attributes:
+      label: Popis chyby
+      description: Co se stalo, očekávané chování?
+  - type: input
+    id: card-type
+    attributes:
+      label: Typ karty
+      description: Typ karty ve které se chyba vyskytuje
+  - type: input
+    id: version
+    attributes:
+      label: Verze karty
+      placeholder: v0.1.0
+  - type: input
+    id: ha
+    attributes:
+      label: Home Assistant verze
+      placeholder: 2025.9
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reprodukce
+      description: Kroky, YAML…
+  - type: textarea
+    id: logs
+    attributes:
+      label: Konzole / logy
+      render: shell
