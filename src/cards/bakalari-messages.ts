@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createCardHeader } from "./bakalari-base";
 import { registerCard } from "./bakalari-base";
 
@@ -103,7 +102,6 @@ class BakalariMessages extends HTMLElement {
 
     // Delegated listener – toggle body
     this._root.addEventListener("click", (e: Event) => {
-      // @ts-ignore
       const path: Element[] = e.composedPath ? e.composedPath() : [];
       const row = path.find((el: any) => el?.classList?.contains?.("row"));
       if (!row) return;

@@ -8,7 +8,6 @@ export function createCardHeader(title: string) {
 }
 
 export function registerCard(type: string, name: string, description: string) {
-  // @ts-ignore
   const w = window as any;
   w.customCards = w.customCards || [];
   if (!w.customCards.some((c: any) => c?.type === type)) {
