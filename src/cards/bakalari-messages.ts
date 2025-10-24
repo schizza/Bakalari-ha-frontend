@@ -102,12 +102,12 @@ class BakalariMessages extends HTMLElement {
 
     // Delegated listener – toggle body
     this._root.addEventListener("click", (e: Event) => {
-      const path: Element[] = e.composedPath ? e.composedPath() : [];
-      const row = path.find((el: any) => el?.classList?.contains?.("row"));
+      const target = e.target as Element | null;
+      const row = target?.closest(".row") as HTMLElement | null;
       if (!row) return;
-      const item = (row as HTMLElement).closest(".item") as HTMLElement | null;
-      if (!item) return;
-      this._toggle(item.dataset.id || "");
+      const item = row.closest(".item") as HTMLElement | null;
+      if (!item || !item.dataset.id) return;
+      this._toggle(item.dataset.id);
     });
 
     // Search / switch
