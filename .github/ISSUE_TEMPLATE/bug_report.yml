@@ -21,7 +21,7 @@ body:
     id: ha
     attributes:
       label: Home Assistant verze
-      placeholder: 2025.9
+      placeholder: "2025.9"
   - type: textarea
     id: repro
     attributes:
