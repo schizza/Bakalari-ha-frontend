@@ -1,5 +1,3 @@
-labels:
-  # ✨ Typ změny
   - name: feat
     color: "1abc9c"
     description: "Nová funkce / rozšíření integrace"
