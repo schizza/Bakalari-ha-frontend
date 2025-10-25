@@ -1,0 +1,25 @@
+name: Sync labels
+
+on:
+  push:
+    branches: [ dev ]
+    paths:
+      - '.github/labels.yaml'
+
+permissions:
+  issues: write
+
+jobs:
+  sync-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync labels from labels.yaml
+        uses: crazy-max/ghaction-github-labeler@v5
+        with:
+          yaml-file: .github/labels.yaml
+          skip-delete: false  # true = nemaž existující labely, false = synchronizuj přesně podle yaml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
