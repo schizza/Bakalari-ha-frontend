@@ -43,7 +43,7 @@ categories:
   - title: "CHANGES_SEMVER_PATCH"
     labels: ["bug", "fix", "bugfix"]
   - title: "CHANGES_MAINTENANCE"
-    labels: ["refactor", "chore", "maintenance"]
+    labels: ["refactor", "chore", "maintenance", "perf"]
   - title: "CHANGES_DOCS"
     labels: ["docs", "documentation"]
   - title: "CHANGES_TESTS"
