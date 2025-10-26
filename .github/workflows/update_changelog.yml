@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   update:
+    if: ${{ github.event.release.target_commitish == 'main' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout target branch of the release
