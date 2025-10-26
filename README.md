@@ -19,13 +19,36 @@ Lovelace karty pro Home Assistant ve *společném balíčku*
 - v UI vyhledat požadovanou kartu `bakalari ...`
 - nebo kofigurovat přímo v yaml editoru
 
+## Dostupné karty:
+ - Rozvrh
+ - Zprávy
+
 ## Příklady použití
 
+### Zprávy
 ```yaml
 type: custom:bakalari-messages-card
 entity: sensor.bakalari_zpravy_SuperDite
-
-type: custom:bakalari-grades-card
-
-type: custom:bakalari-timetable-card
 ```
+### Rozvrh
+ - rozvrh má vizuální editor, kde lze přehledě nastavit požadované zobrazení
+ - jako `entity` vyberze `sensor.bakalari_rozvrh_SuperDite`
+ 
+ příklad použití v `yaml editoru`:
+ ```yaml
+ type: custom:bakalari-timetable-card
+ entity: sensor.bakalari_rozvrh_SuperDite
+ compact: true # kompaktí zobrazení (menší rozvrh)
+ title: Rozvrh pro SuperDítě
+ day_col_width: 55 # šířka sloupce pro dny v rozvrhu
+ slot_min_width: 66  # šířka sloupce pro sloty v rozvrhu
+ fit: scroll # nebo shrink - pokud je rozvrh velký, umožni scrollování
+ hide_empty: true  # skryje prázdné sloty v rozvrhu
+ show_weekends: false  # zobrazení víkendy v rozvrhu
+ grid_options:
+   columns: 24
+   rows: 6
+ short: true   # zobrazuje dny v týdnu v krátkém formátu
+```
+
+ 
