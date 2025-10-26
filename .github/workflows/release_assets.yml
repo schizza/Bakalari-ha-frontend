@@ -1,0 +1,49 @@
+name: Build & Attach Release Assets
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ github.event.release.tag_name }}
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install deps (clean)
+        run: npm ci
+
+      - name: Build with release version
+        env:
+          APP_VERSION: ${{ github.event.release.tag_name }}
+        run: npm run build
+
+      - name: Make zip package
+        run: |
+          mkdir -p release
+          cp README.md LICENSE || true
+          zip -r "release/bakalari-ha-frontend-${{ github.event.release.tag_name }}.zip" dist README.md LICENSE 2>/dev/null || \
+          zip -r "release/bakalari-ha-frontend-${{ github.event.release.tag_name }}.zip" dist
+
+      - name: Upload assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/**             # celé dist (jednotlivé soubory)
+            release/*.zip       # ZIP balíček
+          tag_name: ${{ github.event.release.tag_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
