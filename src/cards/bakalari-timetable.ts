@@ -30,7 +30,7 @@ interface CalendarEvent {
   location?: string;
 }
 interface Config {
-  type: string;
+  type?: string;
   entity: string;
   week_offset?: number;
   show_weekends?: boolean;
@@ -69,12 +69,12 @@ class BakalariTimetableCard extends HTMLElement {
     if (!config?.entity)
       throw new Error("Nastav 'entity' na Bakaláři entitu, která má atribut 'timetable'.");
     this._config = {
-      type: `custom:${CARD_TYPE}`,
       week_offset: 0,
       show_weekends: false,
       compact: false,
       short: false,
       ...config,
+      type: `custom:${CARD_TYPE}`,
     };
     this._computeWeekStart();
     this._rebuildFromAttributes();
@@ -129,7 +129,7 @@ class BakalariTimetableCard extends HTMLElement {
           ],
         },
       ],
-      computeLabel: (schema) => {
+      computeLabel: (schema: any) => {
         switch (schema.name) {
           case "show_weekends":
             return "Zobrazovat víkendy";
@@ -144,7 +144,7 @@ class BakalariTimetableCard extends HTMLElement {
         }
         return undefined;
       },
-      computeHelper: (schema) => {
+      computeHelper: (schema: any) => {
         switch (schema.name) {
           case "entity":
             return "This text describes the function of the entity selector";
