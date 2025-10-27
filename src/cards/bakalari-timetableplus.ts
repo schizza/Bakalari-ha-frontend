@@ -141,6 +141,15 @@ class BakalariTimetableCard extends HTMLElement {
             { name: "day_col_width", selector: { number: {} } },
           ],
         },
+        {
+          type: "grid",
+          name: "",
+          schema: [
+            { name: "clubs_entity", selector: { entity: {} } },
+            { name: "clubs_attribute", selector: { text: {} } },
+            { name: "clubs_enabled", selector: { boolean: {} } },
+          ],
+        },
       ],
       computeLabel: (schema: any) => {
         switch (schema.name) {
@@ -154,15 +163,19 @@ class BakalariTimetableCard extends HTMLElement {
             return "Zobrazovat posuvník";
           case "hide_empty":
             return "Schovat prázdé hodiny";
+          case "clubs_enabled":
+            return "Zobrazovat časy kroužků";
+          case "clubs_attribute":
+            return "Atribut kroužků v senzoru";
+          case "clubs_entity":
+            return "Senzor kroužků";
         }
         return undefined;
       },
       computeHelper: (schema: any) => {
         switch (schema.name) {
-          case "entity":
-            return "This text describes the function of the entity selector";
-          case "unit":
-            return "The unit of measurement for this card";
+          case "case_enabled":
+            return "Zobrazovat kroužky";
         }
         return undefined;
       },
@@ -170,6 +183,9 @@ class BakalariTimetableCard extends HTMLElement {
         if (!config.entity) {
           throw new Error("název entity je vyžadováným parametrem");
         }
+        // if (config.clubs_enabled === true && !config?.clubs_entity?.trim()) {
+        //   throw new Error("Název entity pro kroužky je vyžadován při povolení zobrazení kroužků!");
+        // }
       },
     };
   }
