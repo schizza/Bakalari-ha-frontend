@@ -635,7 +635,7 @@ class BakalariTimetableCard extends HTMLElement {
     const cfg = this._config;
     if (!cfg) return;
 
-    let allSlots = [...this._slots];
+    const allSlots = [...this._slots];
     // Augment slots with club-only times that don't fit into any existing slot
     const clubEvents = this._events.filter((ev) => ev.kind === "club");
     if (clubEvents.length) {
