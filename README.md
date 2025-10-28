@@ -7,6 +7,9 @@ Lovelace karty pro Home Assistant ve *společném balíčku*
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 [![Release Drafter (dev)](https://github.com/schizza/Bakalari-ha-frontend/actions/workflows/release-drafter-dev.yml/badge.svg)](https://github.com/schizza/Bakalari-ha-frontend/actions/workflows/release-drafter-dev.yml)
 [![Release Drafter (main)](https://github.com/schizza/Bakalari-ha-frontend/actions/workflows/release-drafter-main.yml/badge.svg)](https://github.com/schizza/Bakalari-ha-frontend/actions/workflows/release-drafter-main.yml)
+[![Downloads (total)](https://img.shields.io/github/downloads/schizza/bakalari-ha-frontend/total)](https://github.com/schizza/bakalari-ha-frontend/releases)
+[![Downloads (latest)](https://img.shields.io/github/downloads/schizza/bakalari-ha-frontend/latest/total)](https://github.com/schizza/bakalari-ha-frontend/releases)
+
 
 ## Instalace přes HACS
 
