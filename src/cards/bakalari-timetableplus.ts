@@ -34,9 +34,10 @@ interface CalendarEvent {
   start: string;
   end: string;
   summary?: string;
+  short?: string;
   description?: string;
   location?: string;
-  kind?: "school" | "club";
+  kind?: "school" | "club" | "holiday" | "celebration";
 }
 interface Config {
   type?: string;
@@ -53,6 +54,7 @@ interface Config {
   clubs_entity?: string;
   clubs_attribute?: string;
   clubs_enabled?: boolean;
+  invert_cols?: boolean;
 }
 interface HomeAssistantLike {
   states: Record<string, any>;
@@ -101,10 +103,6 @@ class BakalariTimetableCard extends HTMLElement {
     this._render();
   }
 
-  // getCardSize() {
-  //   return 6;
-  // }
-
   public getGridOptions() {
     return {
       rows: 12,
@@ -131,6 +129,7 @@ class BakalariTimetableCard extends HTMLElement {
             { name: "short", selector: { boolean: {} } },
             { name: "fit", selector: { select: { options: ["scroll", "shrink"] } } },
             { name: "hide_empty", selector: { boolean: {} } },
+            { name: "invert_cols", selector: { boolean: {} } },
           ],
         },
         {
@@ -169,6 +168,8 @@ class BakalariTimetableCard extends HTMLElement {
             return "Atribut kroužků v senzoru";
           case "clubs_entity":
             return "Senzor kroužků";
+          case "invert_cols":
+            return "Invertovat sloupce x řádky";
         }
         return undefined;
       },
@@ -328,6 +329,7 @@ class BakalariTimetableCard extends HTMLElement {
         start: startISO,
         end: endISO,
         summary: ((c as any).name || "").trim(),
+        short: ((c as any).short || "").trim(),
         description: "Kroužek",
         location: "",
         kind: "club",
@@ -341,15 +343,36 @@ class BakalariTimetableCard extends HTMLElement {
 
   private _rebuildFromAttributes() {
     this._error = null;
-    const st = this._hass?.states?.[this._config?.entity || ""];
-    const attrs: any = st?.attributes || {};
+
+    const cfg = this._config;
+    const eid = cfg?.entity || "";
+    const st = this._hass?.states?.[eid];
+
+    if (!st) {
+      this._events = [];
+      this._slots = [];
+      this._clubEvents = [];
+      this._error = `Entita '${eid}' nebyla nalezena. Ujisti se, že zadáváš správný název Bakaláři senzoru.`;
+      return;
+    }
+
+    if (eid.startsWith("calendar.")) {
+      this._events = [];
+      this._slots = [];
+      this._clubEvents = [];
+      this._error = `Karta vyžaduje entitu senzor.*, nikoli calendar.*`;
+      return;
+    }
+
+    const attrs: any = st.attributes || {};
     const timetable = attrs.timetable || attrs.Timetable;
 
     if (!timetable) {
+      const avail = Object.keys(attrs).sort().join(", ");
       this._events = [];
       this._slots = [];
-      this._error =
-        "Chybí atribut 'timetable' na dané entitě. Ujisti se, že používáš správnou Bakaláři entitu.";
+      this._clubEvents = [];
+      this._error = "Chybí atribut 'timetable' na dané entitě. Dostupné atributy: " + avail + ".";
       return;
     }
 
@@ -470,6 +493,7 @@ class BakalariTimetableCard extends HTMLElement {
       const isCelebration = dayType === "celebration";
       if (isHoliday || isCelebration) {
         const label = isHoliday ? "Prázdniny" : "Svátek";
+        const kind = isHoliday ? "holiday" : "celebration";
         const dayDesc = (d.description || "").trim();
         for (const sl of slots) {
           const s = new Date(base);
@@ -484,6 +508,7 @@ class BakalariTimetableCard extends HTMLElement {
             summary: label,
             description: dayDesc,
             location: "",
+            kind: kind,
           });
         }
         continue;
@@ -581,22 +606,93 @@ class BakalariTimetableCard extends HTMLElement {
   }
 
   private _formatSlotLabel(slot: Slot, i: number) {
-    return `${i + 1}. (${slot.start}–${slot.end})`;
+    const slotText = this._config.compact ? `${i + 1}.` : `${i + 1}. (${slot.start}–${slot.end})`;
+    return slotText;
   }
+
+  private _slotIsHolidayOnly(slot: Slot): boolean {
+    // True if the given slot, across rendered days, contains at least one holiday/celebration
+    // and contains no school or club events.
+    const days = this._daysToRender();
+    const eventsByDay = this._eventsByDay();
+    const hm = (d: Date) =>
+      `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+    let hasHolidayOrCelebration = false;
+
+    for (const day of days) {
+      const list = eventsByDay[day] || [];
+      for (const ev of list) {
+        const evS = hm(new Date(ev.start));
+        const evE = hm(new Date(ev.end));
+        const matches =
+          (evS === slot.start && evE === slot.end) || (evS >= slot.start && evE <= slot.end);
+        if (!matches) continue;
+
+        const k = this._kind(ev);
+        if (k === "school" || k === "club") {
+          // Contains a normal lesson or a club -> not holiday-only
+          return false;
+        }
+        if (k === "holiday" || k === "celebration") {
+          hasHolidayOrCelebration = true;
+        }
+      }
+    }
+
+    return hasHolidayOrCelebration;
+  }
+
+  private _kind(ev: CalendarEvent): string {
+    if (ev.kind === "holiday") return "holiday";
+    if (ev.kind === "celebration") return "celebration";
+    if (ev.kind === "club") return "club";
+
+    return "school";
+  }
+
   private _formatTitle(ev?: CalendarEvent) {
     const anyEv: any = ev || {};
+    if (ev && this._config?.compact) {
+      const k = this._kind(ev);
+      if (k === "holiday") return "PRÁ";
+      if (k === "celebration") return "SV";
+      if (k === "club" && anyEv.short) return String(anyEv.short || "").trim();
+    }
     return (anyEv.summary || anyEv.title || anyEv.message || anyEv.name || "").trim();
   }
-  private _tooltip(ev: CalendarEvent) {
-    return [
-      this._formatTitle(ev),
+  private _tooltip(ev: CalendarEvent, slot?: Slot) {
+    const evS = this._hm(new Date(ev.start));
+    const evE = this._hm(new Date(ev.end));
+    const showExact = !!(this._config?.compact && slot && (evS !== slot.start || evE !== slot.end));
+    const anyEv: any = ev || {};
+    const longTitle = (anyEv.summary || anyEv.title || anyEv.message || anyEv.name || "").trim();
+    const parts = [
+      longTitle,
+      this._config?.compact && slot ? `Čas: ${slot.start}–${slot.end}` : "",
+      showExact ? `Událost: ${evS}–${evE}` : "",
       ev.location ? `Místnost: ${ev.location}` : "",
       ev.description || "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    ].filter(Boolean);
+    return parts.join(" ");
   }
   private _weekLabel(): string {
+    if (this._config?.compact) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const d = today.getDay();
+      const toMonday = d === 0 ? -6 : 1 - d;
+      const currentMonday = new Date(today);
+      currentMonday.setDate(today.getDate() + toMonday);
+      const selMonday = new Date(this._weekStart);
+      selMonday.setHours(0, 0, 0, 0);
+      const diffDays = Math.round(
+        (selMonday.getTime() - currentMonday.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (diffDays === 0) return "Dnes";
+      const sign = diffDays > 0 ? "+" : "−";
+      return `${sign} ${Math.abs(diffDays)} dní`;
+    }
     const fmt = (d: Date) => d.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
     const s = new Date(this._weekStart);
     const e = new Date(this._weekEnd());
@@ -674,6 +770,10 @@ class BakalariTimetableCard extends HTMLElement {
       cols = allSlots.filter(slotHasEvent);
     }
 
+    cols = cols.filter((s) => !this._slotIsHolidayOnly(s));
+    const inverted = !!this._config?.invert_cols;
+    const columnCount = inverted ? days.length : cols.length;
+
     const styles = `
       :host { display:block; }
       ha-card { overflow:hidden; }
@@ -695,10 +795,13 @@ class BakalariTimetableCard extends HTMLElement {
       .th.day { font-weight:700; }
       .td.day { font-weight:600; background: var(--table-header-background-color, transparent); }
       .td.cell { text-align:center; }
+      .td.cell.today, .th.slot.today { background: var(--table-today-background, rgba(255, 235, 59, 0.2)); }
+      .tr.today .td.day, .tr.today .td.cell { background: var(--table-today-background, rgba(255, 235, 59, 0.2)); }
       .subject { font-weight:600; }
       .empty { opacity:.5; }
       .compact .th, .compact .td { padding:6px 8px; }
       .error { color: var(--error-color, #c62828); padding: 0 16px 12px; }
+
       .ev {
         display: inline-flex;
         align-items: center;
@@ -717,6 +820,19 @@ class BakalariTimetableCard extends HTMLElement {
         color: white;
         font-weight: 600;
       }
+      .ev.celebration {
+        background: var(--bac-holiday-bg, #ffe6e6);
+        color: var(--bac-holiday-fg, #8b0000);
+        border: 1px solid rgba(139, 0, 0, 0.25);
+        font-weight: 700;
+      }
+      .ev.holiday {
+        background: var(--bac-vacation-bg, #e6f3ff);
+        color: var(--bac-vacation-fg, #003d80);
+        border: 1px solid rgba(0, 61, 128, 0.2);
+        font-weight: 700;
+      }
+
       .compact .ev { padding: 4px 6px; }
     `;
 
@@ -726,43 +842,105 @@ class BakalariTimetableCard extends HTMLElement {
         <div class="spacer"></div>
         <div class="week-nav">
           <button class="icon-btn" id="prev" title="Předchozí týden"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
-          <div class="week-label">${this._escape(this._weekLabel())}</div>
+          <button class="icon-btn" id="today" title="Dnes"><ha-icon icon="mdi:calendar-today"></ha-icon></button>
+          <div class="week-label"${cfg.compact ? ' style="font-size:0.9em"' : ""}>${this._escape(this._weekLabel())}</div>
           <button class="icon-btn" id="next" title="Další týden"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
         </div>
       </div>`;
 
+    let leftHeaderLabel = inverted ? "Hodina / Den" : "Den / Hodina";
+    leftHeaderLabel = this._config?.compact ? "" : leftHeaderLabel; // do not show header label in compact mode
+
+    const headerCells = inverted
+      ? days
+          .map((d) => {
+            const t = new Date();
+            const inWeek =
+              t.getTime() >= this._weekStart.getTime() && t.getTime() < this._weekEnd().getTime();
+            const isToday = inWeek && d === this._dayOfWeek(t);
+            const cls = isToday ? "th slot today" : "th slot";
+            return `<div class="${cls}">${this._escape(this._config?.short ? DAY_LABELS_CS_SHORT[d] : DAY_LABELS_CS[d])}</div>`;
+          })
+          .join("")
+      : cols.length
+        ? cols
+            .map((s, i) =>
+              this._slotIsHolidayOnly(s) // holidays only? dont show slot
+                ? ``
+                : `<div class="th slot">${this._escape(this._formatSlotLabel(s, i))}</div>`,
+            )
+            .join("")
+        : `<div class="th slot" style="grid-column: span 6; opacity:.6; text-align:center;">Žádné sloty</div>`;
+
     const thead = `
       <div class="thead">
-        <div class="th day">Den / Hodina</div>
-        ${cols.length ? cols.map((s, i) => `<div class="th slot">${this._escape(this._formatSlotLabel(s, i))}</div>`).join("") : `<div class="th slot" style="grid-column: span 6; opacity:.6; text-align:center;">Žádné sloty</div>`}
+        <div class="th day">${leftHeaderLabel}</div>
+        ${headerCells}
       </div>`;
 
-    const tbody = days
-      .map(
-        (day) => `
-      <div class="tr">
-        <div class="td day">${this._config?.short ? DAY_LABELS_CS_SHORT[day] : DAY_LABELS_CS[day]}</div>
-        ${cols
-          .map((slot) => {
-            const evs = this._eventsAt(day, slot);
-            if (!evs.length) {
-              return `<div class="td cell"><div class="empty">–</div></div>`;
-            }
-            const items = evs
-              .map((ev) => {
-                const title = this._escape(this._formatTitle(ev) || "—");
-                const tip = this._escape(this._tooltip(ev));
-                const cls = ev.kind === "club" ? "ev club" : "ev school";
-                return `<div class="${cls}" title="${tip}"><span class="subject">${title}</span></div>`;
+    let tbody = "";
+    if (inverted) {
+      // Řádky = sloty, sloupce = dny
+      tbody = cols
+        .map(
+          (slot, i) => `<div class="td day">${this._escape(this._formatSlotLabel(slot, i))}</div>
+          ${days
+            .map((day) => {
+              const evs = this._eventsAt(day, slot);
+              const t = new Date();
+              const inWeek =
+                t.getTime() >= this._weekStart.getTime() && t.getTime() < this._weekEnd().getTime();
+              const isTodayCell = inWeek && day === this._dayOfWeek(t);
+              const cellCls = isTodayCell ? "td cell today" : "td cell";
+              if (!evs.length) {
+                return `<div class="${cellCls}"><div class="empty">–</div></div>`;
+              }
+              const items = evs
+                .map((ev) => {
+                  const title = this._escape(this._formatTitle(ev) || "—");
+                  const tip = this._escape(this._tooltip(ev, slot));
+                  const k = this._kind(ev);
+                  const cls = `ev ${k}`;
+                  return `<div class="${cls}" title="${tip}"><span class="subject">${title}</span></div>`;
+                })
+                .join("");
+              return `<div class="${cellCls}">${items}</div>`;
+            })
+            .join("")}
+          </div>
+        `,
+        )
+        .join("");
+    } else {
+      // Řádky = dny, sloupce = sloty
+      tbody = days
+        .map(
+          (day) => `
+          <div class="tr${new Date().getTime() >= this._weekStart.getTime() && new Date().getTime() < this._weekEnd().getTime() && day === this._dayOfWeek(new Date()) ? " today" : ""}">
+            <div class="td day">${this._config?.short ? DAY_LABELS_CS_SHORT[day] : DAY_LABELS_CS[day]}</div>
+            ${cols
+              .map((slot) => {
+                const evs = this._eventsAt(day, slot);
+                if (!evs.length) {
+                  return `<div class="td cell"><div class="empty">–</div></div>`;
+                }
+                const items = evs
+                  .map((ev) => {
+                    const title = this._escape(this._formatTitle(ev) || "—");
+                    const tip = this._escape(this._tooltip(ev, slot));
+                    const k = this._kind(ev);
+                    const cls = `ev ${k}`;
+                    return `<div class="${cls}" title="${tip}"><span class="subject">${title}</span></div>`;
+                  })
+                  .join("");
+                return `<div class="td cell">${items}</div>`;
               })
-              .join("");
-            return `<div class="td cell">${items}</div>`;
-          })
-          .join("")}
-      </div>
-    `,
-      )
-      .join("");
+              .join("")}
+          </div>
+        `,
+        )
+        .join("");
+    }
 
     const errorBlock = this._error ? `<div class="error">${this._escape(this._error)}</div>` : "";
 
@@ -772,7 +950,7 @@ class BakalariTimetableCard extends HTMLElement {
         ${header}
         ${errorBlock}
         <div class="scroller">
-          <div class="table" style="--col-count:${cols.length}; --day-col-width:${this._dayWidth()}px; --slot-min:${this._slotMin()}px">
+          <div class="table" style="--col-count:${columnCount}; --day-col-width:${this._dayWidth()}px; --slot-min:${this._slotMin()}px">
             ${thead}
             <div class="tbody">${tbody}</div>
           </div>
@@ -782,6 +960,11 @@ class BakalariTimetableCard extends HTMLElement {
 
     // Bind events
     this._root.getElementById("prev")?.addEventListener("click", () => this._navigate(-1));
+    this._root.getElementById("today")?.addEventListener("click", () => {
+      this._computeWeekStart();
+      this._rebuildFromAttributes();
+      this._render();
+    });
     this._root.getElementById("next")?.addEventListener("click", () => this._navigate(1));
   }
 }
