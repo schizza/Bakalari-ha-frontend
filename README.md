@@ -52,7 +52,7 @@ entity: sensor.bakalari_zpravy_SuperDite
   - automatiky jsou schovány i prázdné hodiny, ev. hodiny, které obsahují jen `Svátek` nebo `Prázdniny`
 
 Příklad zobrazení plného a kompaktního režimu:
-[![Kompaktní režim](https://www.github.com/schizza/bakalari-ha-frontend/blob/main/docs/rozvrh.png)](https://www.github.com/schizza/bakalari-ha-frontend/blob/main/docs/rozvrh.png)
+[![Kompaktní režim](https://github.com/schizza/Bakalari-ha-frontend/blob/v0.2.0/docs/rozvrh.png)](https://github.com/schizza/Bakalari-ha-frontend/blob/v0.2.0/docs/rozvrh.png)
 
  příklad použití v `yaml editoru`:
  ```yaml
