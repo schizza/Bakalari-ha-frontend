@@ -36,7 +36,7 @@ interface MessageItem {
   text?: string;
   html?: string;
   sent?: string | number | Date;
-  unread?: boolean;
+  read?: boolean;
   attachments?: MessageAttachment[];
 }
 interface Config {
@@ -164,14 +164,7 @@ class BakalariMessagesCard extends HTMLElement {
   }
 
   public getGridOptions() {
-    return {
-      rows: 6,
-      columns: 24,
-      min_rows: 2,
-      min_columns: 24,
-      min_width: 12,
-      min_height: 6,
-    };
+    return {};
   }
 
   // ---- Utils & state ----
@@ -334,7 +327,7 @@ class BakalariMessagesCard extends HTMLElement {
           (m.text || "").toLowerCase().includes(q),
       );
     }
-    if (this._onlyUnread) arr = arr.filter((m) => m.unread === true);
+    if (this._onlyUnread) arr = arr.filter((m) => m.read === false);
 
     const asc = (this._config.sort || "desc").toLowerCase() === "asc";
     arr.sort((a, b) => {
@@ -414,7 +407,7 @@ class BakalariMessagesCard extends HTMLElement {
 
     const errorBlock = this._error ? `<div class="error">${this._escape(this._error)}</div>` : "";
 
-    const unreadClass = list.some((m) => m.unread) ? "" : "unreadOff";
+    const unreadClass = list.some((m) => m.read === false) ? "" : "unreadOff";
     const bodyContent = !this._error
       ? list.length
         ? `<div class="list ${unreadClass}">
@@ -444,7 +437,7 @@ class BakalariMessagesCard extends HTMLElement {
                 return `
                   <div class="item${open}" data-id="${this._escape(id)}">
                     <div class="row">
-                      <div class="bullet" style="${m.unread ? "" : "opacity:0.15;"}"></div>
+                      <div class="bullet" style="${m.read === false ? "" : "opacity:0.15;"}"></div>
                       <div class="meta">
                         <div class="titleline">${this._escape(m.title || "Bez předmětu")}</div>
                         <div class="subline">${this._escape(m.sender || "Neznámý odesílatel")}</div>
