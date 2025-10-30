@@ -65,13 +65,13 @@ class BakalariMessages extends HTMLElement {
         }
         .list { display:flex; flex-direction:column; gap:8px; }
         .item { border:1px solid var(--divider-color); border-radius:12px; overflow:hidden; background: var(--card-background-color); }
-        .row { display:flex; gap:10px; align-items:center; padding:10px 12px; cursor:pointer; }
+        .row { display:flex; gap:10px; align-items:center; padding:10px 12px; cursor:pointer; user-select:none; }
         .bullet { width:8px; height:8px; border-radius:50%; background: var(--accent-color); opacity:.6; }
         .meta { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
         .titleline { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .subline { color: var(--secondary-text-color); font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .date { color: var(--secondary-text-color); font-size:.85rem; }
-        .body { padding:0 12px 12px 12px; display:none; }
+        .body { padding:0 12px 12px 12px; display:none; -webkit-user-select:text; user-select:text; }
         .item.open .body { display:block; }
         .attachments { margin-top:6px; }
         .attachments a { text-decoration:none; }
