@@ -1,33 +1,31 @@
 name: Release Drafter (dev)
 
 on:
-  push:
-    branches: [ dev ]
   pull_request:
     branches: [ dev ]
     types: [opened, reopened, synchronize, labeled, unlabeled, edited, closed]
+  push:
+    branches: [ dev ]
 
 permissions:
   contents: write
   pull-requests: read
 
 concurrency:
-  group: release-drafter-dev-${{ github.ref }}
+  group: release-drafter-dev
   cancel-in-progress: true
 
 jobs:
   update_release_draft:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0       
-          fetch-tags: true    
       - name: Update draft release for dev
         uses: release-drafter/release-drafter@v6
         with:
+          fetch-depth: 0
+          fetch-tags: true
           config-name: release-drafter.yml
-          commitish: ${{ github.event.pull_request.base.ref || 'dev' }}
+          commitish: dev
           filter-by-commitish: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
