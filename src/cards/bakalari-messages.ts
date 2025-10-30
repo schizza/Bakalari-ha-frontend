@@ -150,11 +150,12 @@ class BakalariMessagesCard extends HTMLElement {
       ...config,
       type: `custom:${CARD_TYPE}`,
     };
-    // load persisted "only unread" with default from config
+    // load persisted toggles and inputs
     this._onlyUnread = this._loadBool(
       this._storageKey("only_unread"),
       !!this._config.show_only_unread,
     );
+    this._query = this._loadString(this._storageKey("search_query"), "");
     this._render();
   }
 
@@ -184,6 +185,21 @@ class BakalariMessagesCard extends HTMLElement {
   private _saveBool(key: string, value: boolean) {
     try {
       localStorage.setItem(key, value ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }
+  private _loadString(key: string, fallback = "") {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? fallback : v;
+    } catch {
+      return fallback;
+    }
+  }
+  private _saveString(key: string, value: string) {
+    try {
+      localStorage.setItem(key, value);
     } catch {
       // ignore
     }
@@ -472,6 +488,7 @@ class BakalariMessagesCard extends HTMLElement {
     // Bind events
     this._root.getElementById("search")?.addEventListener("input", (e: any) => {
       this._query = e?.target?.value || "";
+      this._saveString(this._storageKey("search_query"), this._query);
       this._render();
     });
     this._root.getElementById("onlyUnread")?.addEventListener("change", (e: any) => {
