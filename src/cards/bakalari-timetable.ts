@@ -1,21 +1,28 @@
 /*
-  Bakaláři Timetable Card — attribute-only version (no Calendar API)
+  Bakaláři Timetable Card
   -----------------------------------------------------------------
   Usage in Lovelace:
   - type: custom:bakalari-timetable-card
-    entity: calendar.bakalari_timetable
+    entity: sensor.bakalari_timetable
     title: Rozvrh
     show_weekends: false
     compact: false
+    short: false
+    slot_min_width: 55
+    day_col_width: 66
+    hide_empty: true
+    clubs_enabled: true
+    clubs_entity: sensor.my_clubs
+    clubs_attribute: clubs
 */
 
 import { registerCard } from "./bakalari-base";
 
-export const CARD_VERSION = "0.0.1";
+export const CARD_VERSION = "0.2.0";
 export const CARD_TYPE = "bakalari-timetable-card";
 export const CARD_NAME = "Bakaláři Rozvrh";
 
-registerCard(CARD_TYPE, CARD_NAME, "Bakaláři - Školní rozvrh (řádky dny, sloupce hodiny)");
+registerCard(CARD_TYPE, CARD_NAME, "Bakaláři - Školní rozvrh + kroužky");
 
 // ---- Types ----
 interface Slot {
@@ -26,8 +33,10 @@ interface CalendarEvent {
   start: string;
   end: string;
   summary?: string;
+  short?: string;
   description?: string;
   location?: string;
+  kind?: "school" | "club" | "holiday" | "celebration";
 }
 interface Config {
   type?: string;
@@ -41,6 +50,11 @@ interface Config {
   fit?: "scroll" | "shrink";
   short?: boolean;
   hide_empty?: boolean;
+  clubs_entity?: string;
+  clubs_attribute?: string;
+  clubs_enabled?: boolean;
+  invert_cols?: boolean;
+  show_legend?: boolean;
 }
 interface HomeAssistantLike {
   states: Record<string, any>;
@@ -59,6 +73,7 @@ class BakalariTimetableCard extends HTMLElement {
   private _slots: Slot[] = [];
   private _root: ShadowRoot;
   private _error: string | null = null;
+  private _clubEvents: CalendarEvent[] = [];
 
   constructor() {
     super();
@@ -88,10 +103,6 @@ class BakalariTimetableCard extends HTMLElement {
     this._render();
   }
 
-  // getCardSize() {
-  //   return 6;
-  // }
-
   public getGridOptions() {
     return {
       rows: 12,
@@ -118,6 +129,8 @@ class BakalariTimetableCard extends HTMLElement {
             { name: "short", selector: { boolean: {} } },
             { name: "fit", selector: { select: { options: ["scroll", "shrink"] } } },
             { name: "hide_empty", selector: { boolean: {} } },
+            { name: "show_legend", selector: { boolean: {} } },
+            { name: "invert_cols", selector: { boolean: {} } },
           ],
         },
         {
@@ -126,6 +139,15 @@ class BakalariTimetableCard extends HTMLElement {
           schema: [
             { name: "slot_min_width", selector: { number: {} } },
             { name: "day_col_width", selector: { number: {} } },
+          ],
+        },
+        {
+          type: "grid",
+          name: "",
+          schema: [
+            { name: "clubs_entity", selector: { entity: {} } },
+            { name: "clubs_attribute", selector: { text: {} } },
+            { name: "clubs_enabled", selector: { boolean: {} } },
           ],
         },
       ],
@@ -141,15 +163,23 @@ class BakalariTimetableCard extends HTMLElement {
             return "Zobrazovat posuvník";
           case "hide_empty":
             return "Schovat prázdé hodiny";
+          case "show_legend":
+            return "Zobrazovat legendu slotů";
+          case "clubs_enabled":
+            return "Zobrazovat časy kroužků";
+          case "clubs_attribute":
+            return "Atribut kroužků v senzoru";
+          case "clubs_entity":
+            return "Senzor kroužků";
+          case "invert_cols":
+            return "Invertovat sloupce x řádky";
         }
         return undefined;
       },
       computeHelper: (schema: any) => {
         switch (schema.name) {
-          case "entity":
-            return "This text describes the function of the entity selector";
-          case "unit":
-            return "The unit of measurement for this card";
+          case "case_enabled":
+            return "Zobrazovat kroužky";
         }
         return undefined;
       },
@@ -157,6 +187,9 @@ class BakalariTimetableCard extends HTMLElement {
         if (!config.entity) {
           throw new Error("název entity je vyžadováným parametrem");
         }
+        // if (config.clubs_enabled === true && !config?.clubs_entity?.trim()) {
+        //   throw new Error("Název entity pro kroužky je vyžadován při povolení zobrazení kroužků!");
+        // }
       },
     };
   }
@@ -164,12 +197,16 @@ class BakalariTimetableCard extends HTMLElement {
   static getStubConfig(): Config {
     return {
       entity: "sensor.bakalari_timetable",
+      title: "Rozvrh hodin",
       show_weekends: false,
-      compact: true,
+      compact: false,
       short: false,
       slot_min_width: 55,
       day_col_width: 66,
       hide_empty: true,
+      fit: "scroll",
+      clubs_enabled: false,
+      show_legend: false,
     };
   }
 
@@ -195,25 +232,196 @@ class BakalariTimetableCard extends HTMLElement {
     return d.getDay() as DayIndex;
   }
 
+  private _buildClubsFromAttributes(raw: any) {
+    if (typeof raw === "string") {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        this._clubEvents = [];
+        return;
+      }
+    }
+    if (!raw || typeof raw !== "object") {
+      this._clubEvents = [];
+      return;
+    }
+    const weekStartDate = new Date(this._weekStart); // Monday 00:00 of selected week
+    const weekStart = weekStartDate.getTime();
+    const weekEnd = this._weekEnd().getTime();
+
+    // Akceptovat různé názvy klíčů: time_spans, time-spans, time-span, timeSpans, timeSpan
+    let spansArr: Array<{ id: number; start: string; end: string; day?: number | string }> =
+      (Array.isArray((raw as any).time_spans) && (raw as any).time_spans) ||
+      (Array.isArray((raw as any)["time-spans"]) && (raw as any)["time-spans"]) ||
+      (Array.isArray((raw as any)["time-span"]) && (raw as any)["time-span"]) ||
+      (Array.isArray((raw as any).timeSpans) && (raw as any).timeSpans) ||
+      (Array.isArray((raw as any).timeSpan) && (raw as any).timeSpan) ||
+      [];
+    if (!Array.isArray(spansArr)) spansArr = [];
+
+    // Classes pole zůstává stejné, ale vazba může být 'time_id' i 'time-id' a pole může být 'classes' nebo 'class'
+    let classesArr: Array<{ time_id?: number; ["time-id"]?: number; name: string }> =
+      (Array.isArray((raw as any).classes) && (raw as any).classes) ||
+      (Array.isArray((raw as any)["classes"]) && (raw as any)["classes"]) ||
+      (Array.isArray((raw as any).class) && (raw as any).class) ||
+      (Array.isArray((raw as any)["class"]) && (raw as any)["class"]) ||
+      [];
+    if (!Array.isArray(classesArr)) classesArr = [];
+
+    const spanById = new Map<number, { start: string; end: string; day?: number }>();
+    for (const s of spansArr) {
+      const idOk = typeof (s as any)?.id === "number";
+      const start = (s as any)?.start;
+      const end = (s as any)?.end;
+      const dayRaw = (s as any)?.day;
+      const dayNum =
+        typeof dayRaw === "number"
+          ? dayRaw
+          : typeof dayRaw === "string" && dayRaw.trim() !== ""
+            ? Number(dayRaw)
+            : undefined;
+
+      if (idOk && start && end) {
+        spanById.set((s as any).id, {
+          start: String(start),
+          end: String(end),
+          day: typeof dayNum === "number" && !Number.isNaN(dayNum) ? dayNum : undefined,
+        });
+      }
+    }
+
+    const hm = (s: string) => /^\d{1,2}:\d{2}$/.test(s);
+    const toISO = (timeStr: string, day?: number): string => {
+      // Pokud je čas ve tvaru HH:MM a máme 'day', mapujeme na aktuální týden
+      if (hm(timeStr) && typeof day === "number" && day >= 0 && day <= 6) {
+        const base = new Date(weekStartDate);
+        // JS 0..6 (Sun..Sat), náš weekStart je pondělí => posun:
+        // day=1 => +0, day=2 => +1, ..., day=0 (neděle) => +6
+        const offset = day === 0 ? 6 : day - 1;
+        base.setDate(base.getDate() + offset);
+        const [hh, mm] = timeStr.split(":").map((x) => Number(x));
+        base.setHours(Number.isFinite(hh) ? hh : 0, Number.isFinite(mm) ? mm : 0, 0, 0);
+        return base.toISOString();
+      }
+      // Jinak se pokusíme parsovat jako libovolný datum/čas
+      const d = new Date(timeStr);
+      if (!isNaN(d.getTime())) return d.toISOString();
+      return "";
+    };
+
+    const events: CalendarEvent[] = [];
+    for (const c of classesArr) {
+      const timeId = (c as any).time_id ?? (c as any)["time-id"];
+      if (typeof timeId !== "number") continue;
+
+      const sp = spanById.get(timeId);
+      if (!sp) continue;
+
+      const startISO = toISO(sp.start, sp.day);
+      const endISO = toISO(sp.end, sp.day);
+      if (!startISO || !endISO) continue;
+
+      const ts = new Date(startISO).getTime();
+      const te = new Date(endISO).getTime();
+      if (isNaN(ts) || isNaN(te)) continue;
+
+      // zahrneme jen kroužky, které spadají do aktuálně zvoleného týdne
+      const overlaps =
+        (ts >= weekStart && ts < weekEnd) ||
+        (te > weekStart && te <= weekEnd) ||
+        (ts <= weekStart && te >= weekEnd);
+      if (!overlaps) continue;
+
+      events.push({
+        start: startISO,
+        end: endISO,
+        summary: ((c as any).name || "").trim(),
+        short: ((c as any).short || "").trim(),
+        description: "Kroužek",
+        location: "",
+        kind: "club",
+      });
+    }
+
+    // setřídíme a uložíme
+    events.sort((a, b) => a.start.localeCompare(b.start));
+    this._clubEvents = events;
+  }
+
   private _rebuildFromAttributes() {
     this._error = null;
-    const st = this._hass?.states?.[this._config?.entity || ""];
-    const attrs: any = st?.attributes || {};
+
+    const cfg = this._config;
+    const eid = cfg?.entity || "";
+    const st = this._hass?.states?.[eid];
+
+    if (!st) {
+      this._events = [];
+      this._slots = [];
+      this._clubEvents = [];
+      this._error = `Entita '${eid}' nebyla nalezena. Ujisti se, že zadáváš správný název Bakaláři senzoru.`;
+      return;
+    }
+
+    if (eid.startsWith("calendar.")) {
+      this._events = [];
+      this._slots = [];
+      this._clubEvents = [];
+      this._error = `Karta vyžaduje entitu senzor.*, nikoli calendar.*`;
+      return;
+    }
+
+    const attrs: any = st.attributes || {};
     const timetable = attrs.timetable || attrs.Timetable;
 
     if (!timetable) {
+      const avail = Object.keys(attrs).sort().join(", ");
       this._events = [];
       this._slots = [];
-      this._error =
-        "Chybí atribut 'timetable' na dané entitě. Ujisti se, že používáš správnou Bakaláři entitu.";
+      this._clubEvents = [];
+      this._error = "Chybí atribut 'timetable' na dané entitě. Dostupné atributy: " + avail + ".";
       return;
     }
 
     try {
       this._buildFromAttributes(timetable);
+      const schoolEvents = this._events;
+
+      this._clubEvents = [];
+      if (this._config?.clubs_enabled) {
+        const clubState = this._config?.clubs_entity
+          ? this._hass?.states?.[this._config.clubs_entity]
+          : st; // fallback: stejná entita
+        const clubAttrs: any = clubState?.attributes || {};
+        const clubAttrName = this._config?.clubs_attribute || "clubs";
+        const clubsRaw =
+          clubAttrs[clubAttrName] ??
+          (Array.isArray(clubAttrs["time-span"]) ||
+          Array.isArray(clubAttrs["time-spans"]) ||
+          Array.isArray(clubAttrs.time_spans) ||
+          Array.isArray(clubAttrs.timeSpans) ||
+          Array.isArray(clubAttrs.timeSpan) ||
+          Array.isArray(clubAttrs.classes)
+            ? {
+                time_spans:
+                  clubAttrs.time_spans ??
+                  clubAttrs["time-spans"] ??
+                  clubAttrs["time-span"] ??
+                  clubAttrs.timeSpans ??
+                  clubAttrs.timeSpan,
+                classes: clubAttrs.classes,
+              }
+            : undefined);
+        this._buildClubsFromAttributes(clubsRaw);
+      }
+
+      this._events = [...schoolEvents, ...this._clubEvents].sort((a, b) =>
+        a.start.localeCompare(b.start),
+      );
     } catch (e: any) {
       this._events = [];
       this._slots = [];
+      this._clubEvents = [];
       this._error = `Parse 'timetable' selhal: ${e?.message || e}`;
     }
   }
@@ -292,6 +500,7 @@ class BakalariTimetableCard extends HTMLElement {
       const isCelebration = dayType === "celebration";
       if (isHoliday || isCelebration) {
         const label = isHoliday ? "Prázdniny" : "Svátek";
+        const kind = isHoliday ? "holiday" : "celebration";
         const dayDesc = (d.description || "").trim();
         for (const sl of slots) {
           const s = new Date(base);
@@ -306,6 +515,7 @@ class BakalariTimetableCard extends HTMLElement {
             summary: label,
             description: dayDesc,
             location: "",
+            kind: kind,
           });
         }
         continue;
@@ -384,30 +594,112 @@ class BakalariTimetableCard extends HTMLElement {
     for (const k of Object.keys(m)) m[k]!.sort((a, b) => a.start.localeCompare(b.start));
     return m as Record<DayIndex, CalendarEvent[]>;
   }
-  private _eventAt(day: DayIndex, slot: Slot): CalendarEvent | undefined {
+  private _eventsAt(day: DayIndex, slot: Slot): CalendarEvent[] {
     const list = this._eventsByDay()[day] || [];
-    return list.find(
-      (ev) =>
-        this._hm(new Date(ev.start)) === slot.start && this._hm(new Date(ev.end)) === slot.end,
-    );
+    const hm = (d: Date) =>
+      `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+    const sHM = slot.start;
+    const eHM = slot.end;
+
+    return list.filter((ev) => {
+      const evS = hm(new Date(ev.start));
+      const evE = hm(new Date(ev.end));
+      // přesná shoda nebo událost leží uvnitř slotu
+      const exact = evS === sHM && evE === eHM;
+      const inside = evS >= sHM && evE <= eHM;
+      return exact || inside;
+    });
   }
+
   private _formatSlotLabel(slot: Slot, i: number) {
-    return `${i + 1}. (${slot.start}–${slot.end})`;
+    const slotText = this._config.compact ? `${i + 1}.` : `${i + 1}. (${slot.start}–${slot.end})`;
+    return slotText;
   }
+
+  private _slotIsHolidayOnly(slot: Slot): boolean {
+    // True if the given slot, across rendered days, contains at least one holiday/celebration
+    // and contains no school or club events.
+    const days = this._daysToRender();
+    const eventsByDay = this._eventsByDay();
+    const hm = (d: Date) =>
+      `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+
+    let hasHolidayOrCelebration = false;
+
+    for (const day of days) {
+      const list = eventsByDay[day] || [];
+      for (const ev of list) {
+        const evS = hm(new Date(ev.start));
+        const evE = hm(new Date(ev.end));
+        const matches =
+          (evS === slot.start && evE === slot.end) || (evS >= slot.start && evE <= slot.end);
+        if (!matches) continue;
+
+        const k = this._kind(ev);
+        if (k === "school" || k === "club") {
+          // Contains a normal lesson or a club -> not holiday-only
+          return false;
+        }
+        if (k === "holiday" || k === "celebration") {
+          hasHolidayOrCelebration = true;
+        }
+      }
+    }
+
+    return hasHolidayOrCelebration;
+  }
+
+  private _kind(ev: CalendarEvent): string {
+    if (ev.kind === "holiday") return "holiday";
+    if (ev.kind === "celebration") return "celebration";
+    if (ev.kind === "club") return "club";
+
+    return "school";
+  }
+
   private _formatTitle(ev?: CalendarEvent) {
     const anyEv: any = ev || {};
+    if (ev && this._config?.compact) {
+      const k = this._kind(ev);
+      if (k === "holiday") return "PRÁ";
+      if (k === "celebration") return "SV";
+      if (k === "club" && anyEv.short) return String(anyEv.short || "").trim();
+    }
     return (anyEv.summary || anyEv.title || anyEv.message || anyEv.name || "").trim();
   }
-  private _tooltip(ev: CalendarEvent) {
-    return [
-      this._formatTitle(ev),
+  private _tooltip(ev: CalendarEvent, slot?: Slot) {
+    const evS = this._hm(new Date(ev.start));
+    const evE = this._hm(new Date(ev.end));
+    const showExact = !!(this._config?.compact && slot && (evS !== slot.start || evE !== slot.end));
+    const anyEv: any = ev || {};
+    const longTitle = (anyEv.summary || anyEv.title || anyEv.message || anyEv.name || "").trim();
+    const parts = [
+      longTitle,
+      this._config?.compact && slot ? `Čas: ${slot.start}–${slot.end}` : "",
+      showExact ? `Událost: ${evS}–${evE}` : "",
       ev.location ? `Místnost: ${ev.location}` : "",
       ev.description || "",
-    ]
-      .filter(Boolean)
-      .join(" ");
+    ].filter(Boolean);
+    return parts.join(" ");
   }
   private _weekLabel(): string {
+    if (this._config?.compact) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const d = today.getDay();
+      const toMonday = d === 0 ? -6 : 1 - d;
+      const currentMonday = new Date(today);
+      currentMonday.setDate(today.getDate() + toMonday);
+      const selMonday = new Date(this._weekStart);
+      selMonday.setHours(0, 0, 0, 0);
+      const diffDays = Math.round(
+        (selMonday.getTime() - currentMonday.getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (diffDays === 0) return "Dnes";
+      const sign = diffDays > 0 ? "+" : "−";
+      return `${sign} ${Math.abs(diffDays)} dní`;
+    }
     const fmt = (d: Date) => d.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit" });
     const s = new Date(this._weekStart);
     const e = new Date(this._weekEnd());
@@ -446,7 +738,24 @@ class BakalariTimetableCard extends HTMLElement {
     const cfg = this._config;
     if (!cfg) return;
 
-    const allSlots = this._slots;
+    const allSlots = [...this._slots];
+    // Augment slots with club-only times that don't fit into any existing slot
+    const clubEvents = this._events.filter((ev) => ev.kind === "club");
+    if (clubEvents.length) {
+      const hm = (d: Date) =>
+        `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      const covers = (slot: Slot, s: string, e: string) => slot.start <= s && slot.end >= e;
+      const existsOrCovered = (s: string, e: string) =>
+        allSlots.some((sl) => (sl.start === s && sl.end === e) || covers(sl, s, e));
+      for (const ev of clubEvents) {
+        const sHM = hm(new Date(ev.start));
+        const eHM = hm(new Date(ev.end));
+        if (!existsOrCovered(sHM, eHM)) {
+          allSlots.push({ start: sHM, end: eHM });
+        }
+      }
+      allSlots.sort((a, b) => a.start.localeCompare(b.start));
+    }
     const days = this._daysToRender();
 
     let cols = allSlots;
@@ -455,14 +764,22 @@ class BakalariTimetableCard extends HTMLElement {
       const slotHasEvent = (slot: Slot) =>
         days.some((day) => {
           const list = eventsByDay[day] || [];
-          return list.some(
-            (ev) =>
-              this._hm(new Date(ev.start)) === slot.start &&
-              this._hm(new Date(ev.end)) === slot.end,
-          );
+          const hm = (d: Date) =>
+            `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+          return list.some((ev) => {
+            const evS = hm(new Date(ev.start));
+            const evE = hm(new Date(ev.end));
+            return (
+              (evS === slot.start && evE === slot.end) || (evS >= slot.start && evE <= slot.end)
+            );
+          });
         });
       cols = allSlots.filter(slotHasEvent);
     }
+
+    cols = cols.filter((s) => !this._slotIsHolidayOnly(s));
+    const inverted = !!this._config?.invert_cols;
+    const columnCount = inverted ? days.length : cols.length;
 
     const styles = `
       :host { display:block; }
@@ -485,10 +802,45 @@ class BakalariTimetableCard extends HTMLElement {
       .th.day { font-weight:700; }
       .td.day { font-weight:600; background: var(--table-header-background-color, transparent); }
       .td.cell { text-align:center; }
+      .td.cell.today, .th.slot.today { background: var(--table-today-background, rgba(255, 235, 59, 0.2)); }
+      .tr.today .td.day, .tr.today .td.cell { background: var(--table-today-background, rgba(255, 235, 59, 0.2)); }
       .subject { font-weight:600; }
       .empty { opacity:.5; }
       .compact .th, .compact .td { padding:6px 8px; }
       .error { color: var(--error-color, #c62828); padding: 0 16px 12px; }
+
+      .ev {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border-radius: 8px;
+        margin: 2px 0;
+      }
+      .ev.school {
+        background: var(--chip-background-color, rgba(125, 125, 125, 0.12));
+        font-weight: 600;
+      }
+      .ev.club {
+        background: var(--primary-color, #3f51b5);
+        color: white;
+        font-weight: 600;
+      }
+      .ev.celebration {
+        background: var(--bac-holiday-bg, #ffe6e6);
+        color: var(--bac-holiday-fg, #8b0000);
+        border: 1px solid rgba(139, 0, 0, 0.25);
+        font-weight: 700;
+      }
+      .ev.holiday {
+        background: var(--bac-vacation-bg, #e6f3ff);
+        color: var(--bac-vacation-fg, #003d80);
+        border: 1px solid rgba(0, 61, 128, 0.2);
+        font-weight: 700;
+      }
+
+      .compact .ev { padding: 4px 6px; }
     `;
 
     const header = `
@@ -497,34 +849,114 @@ class BakalariTimetableCard extends HTMLElement {
         <div class="spacer"></div>
         <div class="week-nav">
           <button class="icon-btn" id="prev" title="Předchozí týden"><ha-icon icon="mdi:chevron-left"></ha-icon></button>
-          <div class="week-label">${this._escape(this._weekLabel())}</div>
+          <button class="icon-btn" id="today" title="Dnes"><ha-icon icon="mdi:calendar-today"></ha-icon></button>
+          <div class="week-label"${cfg.compact ? ' style="font-size:0.9em"' : ""}>${this._escape(this._weekLabel())}</div>
           <button class="icon-btn" id="next" title="Další týden"><ha-icon icon="mdi:chevron-right"></ha-icon></button>
         </div>
       </div>`;
 
+    let leftHeaderLabel = inverted ? "Hodina / Den" : "Den / Hodina";
+    leftHeaderLabel = this._config?.compact ? "" : leftHeaderLabel; // do not show header label in compact mode
+
+    const headerCells = inverted
+      ? days
+          .map((d) => {
+            const t = new Date();
+            const inWeek =
+              t.getTime() >= this._weekStart.getTime() && t.getTime() < this._weekEnd().getTime();
+            const isToday = inWeek && d === this._dayOfWeek(t);
+            const cls = isToday ? "th slot today" : "th slot";
+            return `<div class="${cls}">${this._escape(this._config?.short ? DAY_LABELS_CS_SHORT[d] : DAY_LABELS_CS[d])}</div>`;
+          })
+          .join("")
+      : cols.length
+        ? cols
+            .map((s, i) =>
+              this._slotIsHolidayOnly(s) // holidays only? dont show slot
+                ? ``
+                : `<div class="th slot">${this._escape(this._formatSlotLabel(s, i))}</div>`,
+            )
+            .join("")
+        : `<div class="th slot" style="grid-column: span 6; opacity:.6; text-align:center;">Žádné sloty</div>`;
+
     const thead = `
       <div class="thead">
-        <div class="th day">Den / Hodina</div>
-        ${cols.length ? cols.map((s, i) => `<div class="th slot">${this._escape(this._formatSlotLabel(s, i))}</div>`).join("") : `<div class="th slot" style="grid-column: span 6; opacity:.6; text-align:center;">Žádné sloty</div>`}
+        <div class="th day">${leftHeaderLabel}</div>
+        ${headerCells}
       </div>`;
 
-    const tbody = days
-      .map(
-        (day) => `
-      <div class="tr">
-        <div class="td day">${this._config?.short ? DAY_LABELS_CS_SHORT[day] : DAY_LABELS_CS[day]}</div>
-        ${cols
-          .map((slot) => {
-            const ev = this._eventAt(day, slot);
-            const title = ev ? this._escape(this._formatTitle(ev)) : "–";
-            const tip = ev ? ` title="${this._escape(this._tooltip(ev))}"` : "";
-            return `<div class="td cell"${tip}>${ev ? `<div class="subject">${title}</div>` : `<div class="empty">–</div>`}</div>`;
-          })
-          .join("")}
-      </div>
-    `,
-      )
-      .join("");
+    const legend = cfg.show_legend
+      ? `<div class="legend" style="padding:8px 16px; display:flex; gap:8px; flex-wrap:wrap; ${cfg.compact ? "font-size:0.9em; opacity:.85;" : ""}">${cols
+          .map(
+            (s, i) =>
+              `<span class="lg" style="background: var(--chip-background-color, rgba(125,125,125,.12)); border-radius: 8px; padding: 2px 8px;">${this._escape(`${i + 1} - ${s.start}–${s.end}`)}</span>`,
+          )
+          .join("")}</div>`
+      : "";
+
+    let tbody = "";
+    if (inverted) {
+      // Řádky = sloty, sloupce = dny
+      tbody = cols
+        .map(
+          (slot, i) => `<div class="td day">${this._escape(this._formatSlotLabel(slot, i))}</div>
+          ${days
+            .map((day) => {
+              const evs = this._eventsAt(day, slot);
+              const t = new Date();
+              const inWeek =
+                t.getTime() >= this._weekStart.getTime() && t.getTime() < this._weekEnd().getTime();
+              const isTodayCell = inWeek && day === this._dayOfWeek(t);
+              const cellCls = isTodayCell ? "td cell today" : "td cell";
+              if (!evs.length) {
+                return `<div class="${cellCls}"><div class="empty">–</div></div>`;
+              }
+              const items = evs
+                .map((ev) => {
+                  const title = this._escape(this._formatTitle(ev) || "—");
+                  const tip = this._escape(this._tooltip(ev, slot));
+                  const k = this._kind(ev);
+                  const cls = `ev ${k}`;
+                  return `<div class="${cls}" title="${tip}"><span class="subject">${title}</span></div>`;
+                })
+                .join("");
+              return `<div class="${cellCls}">${items}</div>`;
+            })
+            .join("")}
+          </div>
+        `,
+        )
+        .join("");
+    } else {
+      // Řádky = dny, sloupce = sloty
+      tbody = days
+        .map(
+          (day) => `
+          <div class="tr${new Date().getTime() >= this._weekStart.getTime() && new Date().getTime() < this._weekEnd().getTime() && day === this._dayOfWeek(new Date()) ? " today" : ""}">
+            <div class="td day">${this._config?.short ? DAY_LABELS_CS_SHORT[day] : DAY_LABELS_CS[day]}</div>
+            ${cols
+              .map((slot) => {
+                const evs = this._eventsAt(day, slot);
+                if (!evs.length) {
+                  return `<div class="td cell"><div class="empty">–</div></div>`;
+                }
+                const items = evs
+                  .map((ev) => {
+                    const title = this._escape(this._formatTitle(ev) || "—");
+                    const tip = this._escape(this._tooltip(ev, slot));
+                    const k = this._kind(ev);
+                    const cls = `ev ${k}`;
+                    return `<div class="${cls}" title="${tip}"><span class="subject">${title}</span></div>`;
+                  })
+                  .join("");
+                return `<div class="td cell">${items}</div>`;
+              })
+              .join("")}
+          </div>
+        `,
+        )
+        .join("");
+    }
 
     const errorBlock = this._error ? `<div class="error">${this._escape(this._error)}</div>` : "";
 
@@ -534,16 +966,22 @@ class BakalariTimetableCard extends HTMLElement {
         ${header}
         ${errorBlock}
         <div class="scroller">
-          <div class="table" style="--col-count:${cols.length}; --day-col-width:${this._dayWidth()}px; --slot-min:${this._slotMin()}px">
+          <div class="table" style="--col-count:${columnCount}; --day-col-width:${this._dayWidth()}px; --slot-min:${this._slotMin()}px">
             ${thead}
             <div class="tbody">${tbody}</div>
           </div>
         </div>
+        ${legend}
       </ha-card>
     `;
 
     // Bind events
     this._root.getElementById("prev")?.addEventListener("click", () => this._navigate(-1));
+    this._root.getElementById("today")?.addEventListener("click", () => {
+      this._computeWeekStart();
+      this._rebuildFromAttributes();
+      this._render();
+    });
     this._root.getElementById("next")?.addEventListener("click", () => this._navigate(1));
   }
 }
