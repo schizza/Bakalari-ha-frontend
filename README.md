@@ -23,19 +23,36 @@ Lovelace karty pro Home Assistant ve *společném balíčku*
 - nebo kofigurovat přímo v yaml editoru
 
 ## Dostupné karty:
- - Rozvrh + Rozvrh Plus (testovací)
+ - Rozvrh (již obsahuje funkce z karty Rozvrh Plus)
  - Zprávy
 
 ## Příklady použití
 
 ### Zprávy
+ - nově lze ve zprávách kopírovat text zprávy do schránky
+
 ```yaml
 type: custom:bakalari-messages-card
 entity: sensor.bakalari_zpravy_SuperDite
 ```
+
 ### Rozvrh
  - rozvrh má vizuální editor, kde lze přehledě nastavit požadované zobrazení
+   - doporučené je použití vizuálního editoru
  - jako `entity` vyberze `sensor.bakalari_rozvrh_SuperDite`
+ - kompaktní režim (`compact: true`) minimalizuje tabulku pro zobrazení i na malých obrazovkách (mobilních zařízeních)
+ - rozvrh lze přepnout i do inverzního režimu, kdy se prohodí řádky a sloupce
+
+### Rozdíl mezi normálním a kompaktním režimem rozvrhu:
+
+ - Normální režim zobrazuje rozvrh v plné šířce a výšce, což může být obtížné zobrazit na malých obrazovkách.
+ - Kompaktní režim (`compact: true`) nezobrazuje časové sloty s popisem hodiny, nicméně lze zapnout zobrazení legendy pod tabulkou
+  - Plný název hodiny vč. času se zobrazí v `tooltip`u při najetí myši na slot.
+  - přeheld týdnů je zobrazen jako `Dnes` případně `+-7 dní / +- 14 dní`
+  - automatiky jsou schovány i prázdné hodiny, ev. hodiny, které obsahují jen `Svátek` nebo `Prázdniny`
+
+Příklad zobrazení plného a kompaktního režimu:
+[![Kompaktní režim](https://www.github.com/schizza/bakalari-ha-frontend/blob/main/docs/rozvrh.png)](https://www.github.com/schizza/bakalari-ha-frontend/blob/main/docs/rozvrh.png)
 
  příklad použití v `yaml editoru`:
  ```yaml
@@ -52,35 +69,12 @@ entity: sensor.bakalari_zpravy_SuperDite
    columns: 24
    rows: 6
  short: true   # zobrazuje dny v týdnu v krátkém formátu
+ show_legend: true # zobrazuje legendu s informacemi o slotech
+ clubs_enabled: false # umožní zobrazení kroužku - tyto se musí nadefinovat ve vlastním senzoru
+ clubs_entity: sensor.my_clubs_childname  # jméno senzoru s kroužky
+ clubs_attribute: clubs # jméno vašeho atributu s parametry kroužků - defaul: clubs
 ```
-
-### Rozvrh Plus (testovací)
- - stejný jako `Rozvrh` jen s možností přidání kroužků z vlastního senzoru
- - jako `entity` vyberze `sensor.bakalari_rozvrh_plus_SuperDite`
- - pokud chcete zobrazit i kroužky, pak musíte vybrat senzor s nastavením kroužků, viz. níže
-
-
- příklad použití v `yaml editoru`:
- ```yaml
- type: custom:bakalari-timetable-card
- entity: sensor.bakalari_rozvrh_plus_SuperDite
- compact: true # kompaktí zobrazení (menší rozvrh)
- title: Rozvrh pro SuperDítě
- day_col_width: 55 # šířka sloupce pro dny v rozvrhu
- slot_min_width: 66  # šířka sloupce pro sloty v rozvrhu
- fit: scroll # nebo shrink - pokud je rozvrh velký, umožni scrollování
- hide_empty: true  # skryje prázdné sloty v rozvrhu
- show_weekends: false  # zobrazení víkendy v rozvrhu
- grid_options:
-   columns: 24
-   rows: 6
- short: true   # zobrazuje dny v týdnu v krátkém formátu
-
- clubs_enabled: true  # zapne zobrazování kroužků
- clubs_entity: sensor.my_clubs  # název vašeho senzoru
- club_attribute: clubs # název atributu v senzoru, který obsahuje kroužky
-```
-
+### Pokud chcete zobrazovat i rozvrh kroužků
 do `configuration.yaml` je nutné přídat vlastní senzor, který bude obsahovat kroužky
 
 Co obsahuje pole:
@@ -92,6 +86,7 @@ time-span - id: jedinečné pro časový slot, určuje čas kroužku
 
 classes:  - time-id - id časového slotu
           - name: název kroužku
+          - short: krátký název kroužku, který se zobrazuje v kompaktním režimu
 ```
 
 `configuration.yaml`:
@@ -108,8 +103,8 @@ template:
                 {'id': 2, 'start': '14:10', 'end': '16:45', 'day': 3}
               ],
               'classes': [
-                {'time-id': 1, 'name': 'Kreslení'},
-                {'time-id': 2, 'name': 'Housle'}
+                {'time-id': 1, 'name': 'Kreslení', 'short': 'KRS'},
+                {'time-id': 2, 'name': 'Housle', 'short': 'HOU'}
               ]
             } | tojson }}
 
@@ -123,8 +118,8 @@ template:
                 {'id': 2, 'start': '16:00', 'end': '18:30', 'day': 5}
               ],
               'classes': [
-                {'time-id': 1, 'name': 'Housle'},
-                {'time-id': 2, 'name': 'Softball'}
+                {'time-id': 1, 'name': 'Housle', 'short': 'HOU'},
+                {'time-id': 2, 'name': 'Softball', 'short': 'SFT'}
               ]
             } | tojson }}
 ```
