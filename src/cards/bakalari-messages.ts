@@ -169,6 +169,32 @@ class BakalariMessagesCard extends HTMLElement {
   }
 
   // ---- Utils & state ----
+  //
+
+  connectedCallback() {
+    this._root.addEventListener("click", this._onRootClick);
+  }
+
+  disconnectedCallback() {
+    this._root.removeEventListener("click", this._onRootClick);
+  }
+
+  private _onRootClick = (e: Event) => {
+    const row = (e.target as Element | null)?.closest(".row") as HTMLElement | null;
+    if (!row) return;
+
+    const item = row.closest(".item") as HTMLElement | null;
+    if (!item) return;
+
+    const id = item.dataset?.id || "";
+    if (!id || !item) return;
+
+    if (this._open.has(id)) this._open.delete(id);
+    else this._open.add(id);
+
+    item.classList.toggle("open");
+  };
+
   private _storageKey(suffix: string) {
     const ent = (this._config?.entity || "unknown").replace(/\W+/g, "_");
     return `bakalari_messages_${ent}_${suffix}`;
@@ -298,12 +324,12 @@ class BakalariMessagesCard extends HTMLElement {
     return out.join("");
   }
 
-  private _computeId(m: MessageItem, idx: number): string {
+  private _computeId(m: MessageItem): string {
     const sent = m.sent ? new Date(m.sent as any).getTime() : 0;
     const title = (m.title || "").trim();
     const sender = (m.sender || "").trim();
     const ownId = m.id != null ? String(m.id) : "";
-    return `${ownId}|${sent}|${title}|${sender}|${idx}`.replace(/\s+/g, "_");
+    return `${ownId}|${sent}|${title}|${sender}`.replace(/\s+/g, "_");
   }
 
   private _rawMessages(): MessageItem[] {
@@ -373,6 +399,10 @@ class BakalariMessagesCard extends HTMLElement {
 
     const messages = this._rawMessages();
     const list = this._filtered(messages);
+    const currentIds = new Set(list.map((m) => this._computeId(m)));
+    for (const id of Array.from(this._open)) {
+      if (!currentIds.has(id)) this._open.delete(id);
+    }
 
     const styles = `
       :host { display:block; }
@@ -428,8 +458,8 @@ class BakalariMessagesCard extends HTMLElement {
       ? list.length
         ? `<div class="list ${unreadClass}">
             ${list
-              .map((m, idx) => {
-                const id = this._computeId(m, idx);
+              .map((m) => {
+                const id = this._computeId(m);
                 const open = this._open.has(id) ? " open" : "";
                 const attachments = Array.isArray(m.attachments) ? m.attachments : [];
                 const textHtml = this._textHtmlFor(m);
@@ -495,22 +525,6 @@ class BakalariMessagesCard extends HTMLElement {
       this._onlyUnread = !!e?.target?.checked;
       this._saveBool(this._storageKey("only_unread"), this._onlyUnread);
       this._render();
-    });
-
-    // Delegated click for item rows to toggle
-    this._root.addEventListener("click", (e: Event) => {
-      const target = e.target as Element | null;
-      const row = target?.closest(".row") as HTMLElement | null;
-      if (!row) return;
-      const item = row.closest(".item") as HTMLElement | null;
-      const id = item?.dataset?.id || "";
-      if (!id) return;
-      if (this._open.has(id)) this._open.delete(id);
-      else this._open.add(id);
-      // just toggle class without full re-render for snappier UX
-      if (item) {
-        item.classList.toggle("open");
-      }
     });
   }
 }
