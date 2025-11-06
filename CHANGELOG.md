@@ -1,5 +1,29 @@
 # Changelog
 
+# 0.3.1
+
+## ✨ Nové funkce
+
+**Nová Lovelace karta pro `Známky`**
+ - Sumarizace předmětů, zobrazení všech dostupných známek
+ - zobrazení posledních přijatých známek
+ - konfigurační editor pro kartu s nastavením filtrování známek
+
+**Persists search query in local storage (#41) @schizza**
+ - Upraveno vyhledávací pole karty `Zprávy`, kdy hledaný text si pole pamatuje (např. při reloadu)
+
+## 🐛 Opravy chyb
+
+- Fixes unread message filtering (#40) @schizza
+Oprava chyby pro zobrazení nepřečtených zpráv v kartě `Zprávy`
+
+## 🧹 Refaktoring / Údržba
+
+- refactor: Refactors Bakalari messages card (#39) @schizza
+  Refactor Messages card.
+
+---
+
 # 0.2.0
 
 ## Co je nového
