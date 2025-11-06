@@ -287,7 +287,13 @@ class BakalariMessagesCard extends HTMLElement {
 
     const walk = (node: any) => {
       if (node.nodeType === Node.TEXT_NODE) {
-        out.push(this._escape(node.nodeValue));
+        const parentTag = node.parentElement?.tagName || "";
+        if (parentTag == "A") {
+          out.push(this._escape(node.nodeValue));
+        } else {
+          out.push(this._linkify(String(node.nodeValue ?? "")));
+        }
+
         return;
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
@@ -468,7 +474,7 @@ class BakalariMessagesCard extends HTMLElement {
                   .filter((a) => !!a?.url && this._allowedUrl(String(a.url)))
                   .map(
                     (a) => `
-                      <li><a href="${a.url}" target="_blank" rel="noopener noreferrer">${this._escape(a.name || a.url || "")}</a></li>
+                      <li><a href="${this._escape(String(a.url))}" target="_blank" rel="noopener noreferrer">${this._escape(a.name || a.url || "")}</a></li>
                     `,
                   )
                   .join("");
