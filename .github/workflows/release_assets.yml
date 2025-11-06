@@ -21,7 +21,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install deps (clean)
         run: npm ci
@@ -42,8 +42,10 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/**             # celé dist (jednotlivé soubory)
-            release/*.zip       # ZIP balíček
+            dist/**
+            release/*.zip
           tag_name: ${{ github.event.release.tag_name }}
+          fail_on_unmatched_files: true
+          overwrite_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
