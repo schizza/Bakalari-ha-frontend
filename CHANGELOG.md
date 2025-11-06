@@ -1,5 +1,30 @@
 # Changelog
 
+# 0.3.2
+
+## Co je nového
+
+## 🐛 Opravy chyb
+
+### Karta `Zprávy`
+
+**Attaches and detaches event listeners correctly (#48) @schizza**
+- Na kartě `Zprávy` opraven problém s vícenásobným přidávání `Listeners`, což mohlo vést k nemožnosti kliknout a robalit zprávu.
+- Po odpojení elementu odstaví event listenery a vyčistí debounce timer, čímž zabrání únikům paměti a nečekanému chování.
+
+**Improves text and link formatting (#47) @schizza**
+	Zajišťuje správnou konverzi odkazů a escapování URL adres.
+	Formátuje textové uzly odlišně podle jejich nadřazeného tagu pro lepší linkifikaci.
+	Escapuje URL adresy, aby se zabránilo potenciálním injection zranitelnostem..
+
+Fix of lost focus on search input by rendering only the message body on search input.
+
+**Improves message card click handling (#46) @schizza**
+- Přesouvá registraci obsluhy kliknutí do `connectedCallback` a její odpojení do `disconnectedCallback` pro správné řízení životního cyklu prvku.
+- Mění obsluhu kliknutí tak, aby přepínala třídu 'open' na prvku položky.
+-	Upravuje generování ID tak, aby neobsahovalo index, čímž se předchází problémům při změnách seznamu.
+-	Zajišťuje, že ve stavu „open“ zůstávají pouze aktuálně zobrazené zprávy, a odstraňuje zastaralé záznamy.
+
 # 0.3.1
 
 ## ✨ Nové funkce
