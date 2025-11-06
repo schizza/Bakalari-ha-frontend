@@ -25,6 +25,8 @@ Lovelace karty pro Home Assistant ve *společném balíčku*
 ## Dostupné karty:
  - Rozvrh (již obsahuje funkce z karty Rozvrh Plus)
  - Zprávy
+ - Známky
+ - Poslední přijatá známka
 
 ## Příklady použití
 
@@ -123,3 +125,43 @@ template:
               ]
             } | tojson }}
 ```
+
+### Známky
+- doporučené nastavení `Známek` je ve vizuálním editoru
+- `entita` je `sensor.bakalari_....._vsechny_znamky`
+- možnost zobrazit blok `Poslední známky`
+- barevné zvýraznění známky podle hodnoty
+- třídění známek
+- filtry na limit předmětů, počtu známek v předmětu
+- automatické rozbalování předmětů s novými známkami
+- možnost filtrovat předměti pomoci `exclude / include only`
+
+příklad použití v `yaml editoru`:
+
+```yaml
+- type: custom:bakalari-grades-all
+    entity: sensor.bakalari_grades_all
+    name: "Bakaláři – Všechny známky"
+
+    # viditelnost bloků
+    show_subjects: true
+    show_recent: true
+
+    # limit posledních známek
+    limit_recent: 20
+
+    # třídění a filtrování předmětů
+    sort_subjects_by: avg        # name|abbr|count|avg|wavg|last_date
+    sort_subjects_dir: asc       # asc|desc
+
+    filter_subjects_min_count: 0
+    include_subject_ids: []      # např.: ["10"," 2","1N"]
+    exclude_subject_ids: []
+    limit_subjects: 0            # 0 = bez limitu
+    # barvy a perzistence
+    show_colors: true
+    persist_open_subjects: true
+  ```
+
+- Screenshot:
+![Známky](https://github.com/schizza/Bakalari-ha-frontend/blob/main/docs/znamky.png)

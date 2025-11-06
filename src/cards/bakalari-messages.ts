@@ -1,128 +1,174 @@
-import { createCardHeader } from "./bakalari-base";
+/*
+  Bakaláři Messages Card
+  -----------------------------------------------------------------
+  Usage in Lovelace:
+  - type: custom:bakalari-messages-card
+    entity: sensor.bakalari_zpravy
+    title: 📬 Zprávy
+    limit: 100
+    sort: desc
+    show_search: true
+    show_only_unread: false
+    allow_html: true
+*/
+
 import { registerCard } from "./bakalari-base";
 
-class BakalariMessages extends HTMLElement {
-  static getStubConfig() {
-    return { entity: "sensor.bakalari_zpravy", title: "📬 Zprávy" };
-  }
+export const CARD_VERSION = "0.2.0";
+export const CARD_TYPE = "bakalari-messages-card";
+export const CARD_NAME = "Bakaláři Zprávy";
 
-  private _root: ShadowRoot | null = null;
-  private _hass: any = null;
-  private _stateObj: any = null;
-  private _config: any = {
-    title: "📬 Zprávy z Bakalářů",
-    limit: 100,
-    sort: "desc",
-    show_search: true,
-    show_only_unread: false,
-    allow_html: true,
-  };
+registerCard(
+  CARD_TYPE,
+  CARD_NAME,
+  "Přehledná karta pro zprávy z Bakalářů (klikací, vyhledávání, přílohy).",
+);
+
+// ---- Types ----
+interface MessageAttachment {
+  name?: string;
+  url?: string;
+}
+interface MessageItem {
+  id?: string | number;
+  title?: string;
+  sender?: string;
+  text?: string;
+  html?: string;
+  sent?: string | number | Date;
+  read?: boolean;
+  attachments?: MessageAttachment[];
+}
+interface Config {
+  type?: string;
+  entity: string;
+  title?: string;
+  limit?: number;
+  sort?: "asc" | "desc";
+  show_search?: boolean;
+  show_only_unread?: boolean;
+  allow_html?: boolean;
+}
+interface HomeAssistantLike {
+  states: Record<string, any>;
+}
+
+// ---- Component ----
+class BakalariMessagesCard extends HTMLElement {
+  private _hass!: HomeAssistantLike;
+  private _config!: Config;
+  private _root: ShadowRoot;
+  private _error: string | null = null;
+
   private _open = new Set<string>();
   private _query = "";
   private _onlyUnread = false;
 
-  connectedCallback() {
-    const saved = this._loadBool(this._storageKey("only_unread"), this._config.show_only_unread);
-    this._onlyUnread = saved;
-    this._ensureRoot();
-    this._render();
-  }
-
-  public setConfig(config: any) {
-    if (!config || !config.entity) throw new Error("bakalari-messages-card: 'entity' je povinné");
-    this._config = Object.assign({}, this._config, config);
-    this._onlyUnread = !!this._config.show_only_unread;
-    this._render();
-  }
-
-  public set hass(hass: any) {
-    this._hass = hass;
-    this._stateObj = hass.states?.[this._config.entity];
-    this._render();
-  }
-
-  public getCardSize() {
-    return 3;
-  }
-
-  /* ------------ infra ------------ */
-  private _ensureRoot() {
-    if (this._root) return;
+  constructor() {
+    super();
     this._root = this.attachShadow({ mode: "open" });
-
-    this._root.innerHTML = `
-      <style>
-        :host { display:block; }
-        ha-card { display:block; }
-        .wrap { padding: 12px 16px; }
-        .header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-        .title { font-weight:600; font-size:1.1rem; display:flex; align-items:center; gap:.5rem; }
-        .tools { display:flex; gap:8px; align-items:center; }
-        input.search {
-          min-width:200px; border:1px solid var(--divider-color);
-          background: var(--card-background-color); color: var(--primary-text-color);
-          border-radius:8px; padding:6px 8px;
-        }
-        .list { display:flex; flex-direction:column; gap:8px; }
-        .item { border:1px solid var(--divider-color); border-radius:12px; overflow:hidden; background: var(--card-background-color); }
-        .row { display:flex; gap:10px; align-items:center; padding:10px 12px; cursor:pointer; user-select:none; }
-        .bullet { width:8px; height:8px; border-radius:50%; background: var(--accent-color); opacity:.6; }
-        .meta { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
-        .titleline { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .subline { color: var(--secondary-text-color); font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .date { color: var(--secondary-text-color); font-size:.85rem; }
-        .body { padding:0 12px 12px 12px; display:none; -webkit-user-select:text; user-select:text; }
-        .item.open .body { display:block; }
-        .attachments { margin-top:6px; }
-        .attachments a { text-decoration:none; }
-        .empty { color: var(--secondary-text-color); padding:8px 0; }
-        .unreadOff .bullet { display:none; }
-        .tag { font-size:.75rem; padding:2px 6px; border-radius:999px; border:1px solid var(--divider-color); color: var(--secondary-text-color); }
-        .controls { display:flex; align-items:center; gap:10px; }
-        .switch { display:flex; align-items:center; gap:6px; font-size:.9rem; color: var(--secondary-text-color); }
-      </style>
-      <ha-card>
-        <div class="wrap">
-          <div class="header">
-            <div class="title"></div>
-            <div class="tools">
-              <div class="controls">
-                <label class="switch">
-                  <input type="checkbox" id="onlyUnread">
-                  <span>Jen nepřečtené</span>
-                </label>
-              </div>
-              <input class="search" id="search" placeholder="Hledat ve zprávách">
-            </div>
-          </div>
-          <div id="body"></div>
-        </div>
-      </ha-card>
-    `;
-
-    // Delegated listener – toggle body
-    this._root.addEventListener("click", (e: Event) => {
-      const target = e.target as Element | null;
-      const row = target?.closest(".row") as HTMLElement | null;
-      if (!row) return;
-      const item = row.closest(".item") as HTMLElement | null;
-      if (!item || !item.dataset.id) return;
-      this._toggle(item.dataset.id);
-    });
-
-    // Search / switch
-    this._root.getElementById("search")?.addEventListener("input", (e: any) => {
-      this._query = e.target?.value || "";
-      this._renderBody();
-    });
-    this._root.getElementById("onlyUnread")?.addEventListener("change", (e: any) => {
-      this._onlyUnread = !!e.target?.checked;
-      this._saveBool(this._storageKey("only_unread"), this._onlyUnread);
-      this._renderBody();
-    });
   }
 
-  /* ------------ utils ------------ */
+  // YAML Editor
+  static getConfigForm() {
+    return {
+      schema: [
+        { name: "label", selector: { label: {} } },
+        { name: "entity", required: true, selector: { entity: {} } },
+        { name: "title", selector: { text: {} } },
+        {
+          type: "grid",
+          name: "",
+          schema: [
+            { name: "show_search", selector: { boolean: {} } },
+            { name: "show_only_unread", selector: { boolean: {} } },
+            {
+              name: "sort",
+              selector: {
+                select: {
+                  options: [
+                    { value: "desc", label: "Sestupně (nové nahoře)" },
+                    { value: "asc", label: "Vzestupně (staré nahoře)" },
+                  ],
+                },
+              },
+            },
+            { name: "limit", selector: { number: { min: 0 } } },
+            { name: "allow_html", selector: { boolean: {} } },
+          ],
+        },
+      ],
+      computeLabel: (schema: any) => {
+        switch (schema.name) {
+          case "entity":
+            return "Entita";
+          case "title":
+            return "Titulek";
+          case "show_search":
+            return "Zobrazit vyhledávání";
+          case "show_only_unread":
+            return "Zobrazovat jen nepřečtené";
+          case "allow_html":
+            return "Povolit HTML v těle zprávy";
+          case "sort":
+            return "Řazení";
+          case "limit":
+            return "Limit počtu zpráv (0 = bez limitu)";
+        }
+        return undefined;
+      },
+      computeHelper: () => undefined,
+      assertConfig: (config: Config) => {
+        if (!config.entity) throw new Error("Název entity je vyžadován");
+      },
+    };
+  }
+
+  static getStubConfig(): Config {
+    return {
+      entity: "sensor.bakalari_zpravy",
+      title: "📬 Zprávy",
+      limit: 100,
+      sort: "desc",
+      show_search: true,
+      show_only_unread: false,
+      allow_html: true,
+    };
+  }
+
+  // ---- Card API ----
+  setConfig(config: Config) {
+    if (!config?.entity)
+      throw new Error("Nastav 'entity' na senzor se zprávami (atribut 'messages').");
+    this._config = {
+      title: "📬 Zprávy",
+      limit: 100,
+      sort: "desc",
+      show_search: true,
+      show_only_unread: false,
+      allow_html: true,
+      ...config,
+      type: `custom:${CARD_TYPE}`,
+    };
+    // load persisted toggles and inputs
+    this._onlyUnread = this._loadBool(
+      this._storageKey("only_unread"),
+      !!this._config.show_only_unread,
+    );
+    this._query = this._loadString(this._storageKey("search_query"), "");
+    this._render();
+  }
+
+  set hass(hass: HomeAssistantLike) {
+    this._hass = hass;
+    this._render();
+  }
+
+  public getGridOptions() {
+    return {};
+  }
+
+  // ---- Utils & state ----
   private _storageKey(suffix: string) {
     const ent = (this._config?.entity || "unknown").replace(/\W+/g, "_");
     return `bakalari_messages_${ent}_${suffix}`;
@@ -140,10 +186,31 @@ class BakalariMessages extends HTMLElement {
     try {
       localStorage.setItem(key, value ? "1" : "0");
     } catch {
-      // no-op
+      // ignore
+    }
+  }
+  private _loadString(key: string, fallback = "") {
+    try {
+      const v = localStorage.getItem(key);
+      return v === null ? fallback : v;
+    } catch {
+      return fallback;
+    }
+  }
+  private _saveString(key: string, value: string) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // ignore
     }
   }
 
+  private _escape(s: any) {
+    return String(s ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
   private _fmtDate(d: any) {
     if (!d) return "";
     try {
@@ -159,44 +226,12 @@ class BakalariMessages extends HTMLElement {
       return String(d);
     }
   }
-  private _escape(s: any) {
-    return String(s ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-  }
   private _linkify(text: string) {
     const esc = this._escape(text).replace(/\n/g, "<br>");
     return esc.replace(/\b(https?:\/\/[^\s<]+)/g, (m) => {
       return `<a href="${m}" target="_blank" rel="noopener noreferrer">${m}</a>`;
     });
   }
-  private _filtered(messages: any[]) {
-    let arr = Array.isArray(messages) ? messages.slice() : [];
-    if (this._query) {
-      const q = this._query.toLowerCase();
-      arr = arr.filter(
-        (m) =>
-          (m.title || "").toLowerCase().includes(q) ||
-          (m.sender || "").toLowerCase().includes(q) ||
-          (m.text || "").toLowerCase().includes(q),
-      );
-    }
-    if (this._onlyUnread) arr = arr.filter((m) => m.unread === true);
-    const asc = (this._config.sort || "desc").toLowerCase() === "asc";
-    arr.sort((a, b) => new Date(a.sent || 0).getTime() - new Date(b.sent || 0).getTime());
-    if (!asc) arr.reverse();
-    const limit = Number(this._config.limit || 0);
-    if (limit > 0) arr = arr.slice(0, limit);
-    return arr;
-  }
-  private _toggle(id: string) {
-    if (!id) return;
-    if (this._open.has(id)) this._open.delete(id);
-    else this._open.add(id);
-    this._renderBody();
-  }
-
   private _allowedUrl(href: string) {
     try {
       const u = new URL(href, window.location.href);
@@ -205,9 +240,7 @@ class BakalariMessages extends HTMLElement {
       return false;
     }
   }
-
   private _sanitize(html: any) {
-    // Safe reconstruction of allowed tags only
     const allowedTags = new Set([
       "B",
       "STRONG",
@@ -265,97 +298,227 @@ class BakalariMessages extends HTMLElement {
     return out.join("");
   }
 
-  /* ------------ render ------------ */
-  private _render() {
-    if (!this._root) return;
-    // title s malým badge verze (createCardHeader dělá (vX.Y.Z))
-    const header = this._root.querySelector(".title");
-    if (header) {
-      header.innerHTML = "";
-      header.appendChild(createCardHeader(this._config.title || "📬 Zprávy"));
-    }
-    const chk = this._root.getElementById("onlyUnread") as HTMLInputElement | null;
-    if (chk) chk.checked = this._onlyUnread;
-    this._renderBody();
+  private _computeId(m: MessageItem, idx: number): string {
+    const sent = m.sent ? new Date(m.sent as any).getTime() : 0;
+    const title = (m.title || "").trim();
+    const sender = (m.sender || "").trim();
+    const ownId = m.id != null ? String(m.id) : "";
+    return `${ownId}|${sent}|${title}|${sender}|${idx}`.replace(/\s+/g, "_");
   }
 
-  private _renderBody() {
-    if (!this._root) return;
-    const container = this._root.getElementById("body");
-    const state = this._stateObj;
-
-    if (!state) {
-      container!.innerHTML = `<div class="empty">Entita <b>${this._config.entity}</b> neexistuje.</div>`;
-      return;
+  private _rawMessages(): MessageItem[] {
+    this._error = null;
+    const eid = this._config?.entity || "";
+    const st = this._hass?.states?.[eid];
+    if (!st) {
+      this._error = `Entita '${eid}' nebyla nalezena. Ujisti se, že zadáváš správný název senzoru.`;
+      return [];
     }
-    const messages = state.attributes?.messages || [];
+    const attrs: any = st.attributes || {};
+    let messages: any = attrs.messages ?? attrs.Messages ?? null;
+    if (typeof messages === "string") {
+      try {
+        messages = JSON.parse(messages);
+      } catch (e: any) {
+        this._error = `Atribut 'messages' není validní JSON: ${e?.message || e}`;
+        return [];
+      }
+    }
     if (!Array.isArray(messages)) {
-      container!.innerHTML = `<div class="empty">Atribut <code>messages</code> není pole.</div>`;
-      return;
+      this._error =
+        "Atribut 'messages' není pole. Dostupné atributy: " + Object.keys(attrs).sort().join(", ");
+      return [];
     }
+    return messages as MessageItem[];
+  }
 
+  private _filtered(messages: MessageItem[]): MessageItem[] {
+    let arr = Array.isArray(messages) ? messages.slice() : [];
+    if (this._query) {
+      const q = this._query.toLowerCase();
+      arr = arr.filter(
+        (m) =>
+          (m.title || "").toLowerCase().includes(q) ||
+          (m.sender || "").toLowerCase().includes(q) ||
+          (m.text || "").toLowerCase().includes(q),
+      );
+    }
+    if (this._onlyUnread) arr = arr.filter((m) => m.read === false);
+
+    const asc = (this._config.sort || "desc").toLowerCase() === "asc";
+    arr.sort((a, b) => {
+      const at = new Date(a.sent || 0).getTime();
+      const bt = new Date(b.sent || 0).getTime();
+      return at - bt;
+    });
+    if (!asc) arr.reverse();
+
+    const limit = Number(this._config.limit || 0);
+    if (limit > 0) arr = arr.slice(0, limit);
+
+    return arr;
+  }
+
+  private _textHtmlFor(m: MessageItem) {
+    if (this._config.allow_html) {
+      return this._sanitize(m.html ?? m.text ?? "");
+    }
+    return this._linkify(m.text || "");
+  }
+
+  // ---- Render ----
+  private _render() {
+    const cfg = this._config;
+    if (!cfg) return;
+
+    const messages = this._rawMessages();
     const list = this._filtered(messages);
-    if (!list.length) {
-      container!.innerHTML = `<div class="empty">Žádné zprávy k zobrazení.</div>`;
-      return;
-    }
 
-    const unreadClass = list.some((m: any) => m.unread) ? "" : "unreadOff";
-    const html = [
-      `<div class="list ${unreadClass}">`,
-      ...list.map((m: any, idx: number) => {
-        const id = `${idx}-${m.sent ?? ""}-${m.title ?? ""}`.replace(/\s+/g, "_");
-        const open = this._open.has(id) ? " open" : "";
-        const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+    const styles = `
+      :host { display:block; }
+      ha-card { display:block; }
+      .card-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; }
+      .title { font-weight:600; font-size:1.1rem; display:flex; align-items:center; gap:.5rem; }
+      .tools { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+      .search {
+        min-width:200px; border:1px solid var(--divider-color);
+        background: var(--card-background-color); color: var(--primary-text-color);
+        border-radius:8px; padding:6px 8px;
+      }
+      .switch { display:flex; align-items:center; gap:6px; font-size:.9rem; color: var(--secondary-text-color); user-select:none; }
+      .wrap { padding: 0 16px 12px 16px; }
+      .list { display:flex; flex-direction:column; gap:8px; }
+      .item { border:1px solid var(--divider-color); border-radius:12px; overflow:hidden; background: var(--card-background-color); }
+      .row { display:flex; gap:10px; align-items:center; padding:10px 12px; cursor:pointer; user-select:none; }
+      .bullet { width:8px; height:8px; border-radius:50%; background: var(--accent-color); opacity:.6; }
+      .meta { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
+      .titleline { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .subline { color: var(--secondary-text-color); font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .date { color: var(--secondary-text-color); font-size:.85rem; }
+      .body { padding:0 12px 12px 12px; display:none; -webkit-user-select:text; user-select:text; }
+      .item.open .body { display:block; }
+      .attachments { margin-top:6px; }
+      .attachments a { text-decoration:none; }
+      .empty { color: var(--secondary-text-color); padding:8px 0; }
+      .unreadOff .bullet { display:none; }
+      .tag { font-size:.75rem; padding:2px 6px; border-radius:999px; border:1px solid var(--divider-color); color: var(--secondary-text-color); }
+      .error { color: var(--error-color, #c62828); padding: 0 16px 12px; }
+    `;
 
-        const textHtml = this._config.allow_html
-          ? this._sanitize(m.html ?? m.text ?? "")
-          : this._linkify(m.text || "");
+    const header = `
+      <div class="card-header">
+        <div class="title">${this._escape(cfg.title || "📬 Zprávy")}</div>
+        <div class="tools">
+          <label class="switch" title="Zobrazit jen nepřečtené">
+            <input type="checkbox" id="onlyUnread"${this._onlyUnread ? " checked" : ""}>
+            <span>Jen nepřečtené</span>
+          </label>
+          ${
+            cfg.show_search
+              ? `<input class="search" id="search" placeholder="Hledat ve zprávách" value="${this._escape(this._query)}">`
+              : ""
+          }
+        </div>
+      </div>`;
 
-        return `
-          <div class="item${open}" data-id="${id}">
-            <div class="row">
-              <div class="bullet" style="${m.unread ? "" : "opacity:0.15;"}"></div>
-              <div class="meta">
-                <div class="titleline">${this._escape(m.title || "Bez předmětu")}</div>
-                <div class="subline">${this._escape(m.sender || "Neznámý odesílatel")}</div>
-              </div>
-              <div class="date">${this._fmtDate(m.sent)}</div>
-            </div>
-            <div class="body">
-              <div class="text">${textHtml}</div>
-              ${
-                attachments.length
+    const errorBlock = this._error ? `<div class="error">${this._escape(this._error)}</div>` : "";
+
+    const unreadClass = list.some((m) => m.read === false) ? "" : "unreadOff";
+    const bodyContent = !this._error
+      ? list.length
+        ? `<div class="list ${unreadClass}">
+            ${list
+              .map((m, idx) => {
+                const id = this._computeId(m, idx);
+                const open = this._open.has(id) ? " open" : "";
+                const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+                const textHtml = this._textHtmlFor(m);
+
+                const safeAttachments = attachments
+                  .filter((a) => !!a?.url && this._allowedUrl(String(a.url)))
+                  .map(
+                    (a) => `
+                      <li><a href="${a.url}" target="_blank" rel="noopener noreferrer">${this._escape(a.name || a.url || "")}</a></li>
+                    `,
+                  )
+                  .join("");
+
+                const attBlock = safeAttachments
                   ? `<div class="attachments">
-                     <span class="tag">Přílohy</span>
-                     <ul>
-                       ${attachments
-                         .map(
-                           (a: any) => `
-                         <li><a href="${a.url}" target="_blank" rel="noopener noreferrer">${this._escape(a.name || a.url)}</a></li>
-                       `,
-                         )
-                         .join("")}
-                     </ul>
-                   </div>`
-                  : ""
-              }
-            </div>
-          </div>`;
-      }),
-      `</div>`,
-    ].join("");
+                      <span class="tag">Přílohy</span>
+                      <ul>${safeAttachments}</ul>
+                    </div>`
+                  : "";
 
-    container!.innerHTML = html;
+                return `
+                  <div class="item${open}" data-id="${this._escape(id)}">
+                    <div class="row">
+                      <div class="bullet" style="${m.read === false ? "" : "opacity:0.15;"}"></div>
+                      <div class="meta">
+                        <div class="titleline">${this._escape(m.title || "Bez předmětu")}</div>
+                        <div class="subline">${this._escape(m.sender || "Neznámý odesílatel")}</div>
+                      </div>
+                      <div class="date">${this._escape(this._fmtDate(m.sent))}</div>
+                    </div>
+                    <div class="body">
+                      <div class="text">${textHtml}</div>
+                      ${attBlock}
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>`
+        : `<div class="empty">Žádné zprávy k zobrazení.</div>`
+      : "";
+
+    this._root.innerHTML = `
+      <ha-card>
+        <style>${styles}</style>
+        ${header}
+        ${errorBlock}
+        <div class="wrap">
+          <div id="body">
+            ${bodyContent}
+          </div>
+        </div>
+      </ha-card>
+    `;
+
+    // Bind events
+    this._root.getElementById("search")?.addEventListener("input", (e: any) => {
+      this._query = e?.target?.value || "";
+      this._saveString(this._storageKey("search_query"), this._query);
+      this._render();
+    });
+    this._root.getElementById("onlyUnread")?.addEventListener("change", (e: any) => {
+      this._onlyUnread = !!e?.target?.checked;
+      this._saveBool(this._storageKey("only_unread"), this._onlyUnread);
+      this._render();
+    });
+
+    // Delegated click for item rows to toggle
+    this._root.addEventListener("click", (e: Event) => {
+      const target = e.target as Element | null;
+      const row = target?.closest(".row") as HTMLElement | null;
+      if (!row) return;
+      const item = row.closest(".item") as HTMLElement | null;
+      const id = item?.dataset?.id || "";
+      if (!id) return;
+      if (this._open.has(id)) this._open.delete(id);
+      else this._open.add(id);
+      // just toggle class without full re-render for snappier UX
+      if (item) {
+        item.classList.toggle("open");
+      }
+    });
   }
 }
 
-if (!customElements.get("bakalari-messages-card")) {
-  customElements.define("bakalari-messages-card", BakalariMessages);
-}
+customElements.define(CARD_TYPE, BakalariMessagesCard);
 
-registerCard(
-  "bakalari-messages-card",
-  "📬 Bakaláři – Zprávy",
-  "Přehledná karta pro zprávy z Bakalářů (klikací, vyhledávání, přílohy).",
-);
+declare global {
+  interface HTMLElementTagNameMap {
+    [CARD_TYPE]: BakalariMessagesCard;
+  }
+}
