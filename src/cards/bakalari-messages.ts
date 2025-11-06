@@ -63,6 +63,7 @@ class BakalariMessagesCard extends HTMLElement {
   private _open = new Set<string>();
   private _query = "";
   private _onlyUnread = false;
+  private _debounceSearch: number | undefined;
 
   constructor() {
     super();
@@ -169,6 +170,64 @@ class BakalariMessagesCard extends HTMLElement {
   }
 
   // ---- Utils & state ----
+  //
+
+  connectedCallback() {
+    this._root.addEventListener("click", this._onRootClick);
+    this._root.addEventListener("input", this._onRootInput);
+    this._root.addEventListener("change", this._onRootChange);
+  }
+
+  disconnectedCallback() {
+    this._root.removeEventListener("click", this._onRootClick);
+    this._root.removeEventListener("input", this._onRootInput);
+    this._root.removeEventListener("change", this._onRootChange);
+
+    if (this._debounceSearch !== undefined) {
+      clearTimeout(this._debounceSearch);
+      this._debounceSearch = undefined;
+    }
+  }
+
+  private _onRootClick = (e: Event) => {
+    const row = (e.target as Element | null)?.closest(".row") as HTMLElement | null;
+    if (!row) return;
+
+    const item = row.closest(".item") as HTMLElement | null;
+    if (!item) return;
+
+    const id = item.dataset?.id || "";
+    if (!id || !item) return;
+
+    if (this._open.has(id)) this._open.delete(id);
+    else this._open.add(id);
+
+    item.classList.toggle("open");
+  };
+
+  private _onRootInput = (e: Event) => {
+    const elem = e.target as HTMLInputElement | null;
+    if (!elem || elem.id !== "search") return;
+    this._query = elem.value || "";
+    this._saveString(this._storageKey("search_query"), this._query);
+
+    if (this._debounceSearch !== undefined) {
+      clearTimeout(this._debounceSearch);
+    }
+    this._debounceSearch = window.setTimeout(() => {
+      this._renderBody();
+      this._debounceSearch = undefined;
+    }, 150);
+  };
+
+  private _onRootChange = (e: Event) => {
+    const elem = e.target as HTMLInputElement | null;
+    if (!elem || elem.id !== "onlyUnread") return;
+    this._onlyUnread = !!elem.checked;
+    this._saveBool(this._storageKey("only_unread"), this._onlyUnread);
+    this._render();
+  };
+
   private _storageKey(suffix: string) {
     const ent = (this._config?.entity || "unknown").replace(/\W+/g, "_");
     return `bakalari_messages_${ent}_${suffix}`;
@@ -261,7 +320,13 @@ class BakalariMessagesCard extends HTMLElement {
 
     const walk = (node: any) => {
       if (node.nodeType === Node.TEXT_NODE) {
-        out.push(this._escape(node.nodeValue));
+        const parentTag = node.parentElement?.tagName || "";
+        if (parentTag == "A") {
+          out.push(this._escape(node.nodeValue));
+        } else {
+          out.push(this._linkify(String(node.nodeValue ?? "")));
+        }
+
         return;
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
@@ -298,12 +363,12 @@ class BakalariMessagesCard extends HTMLElement {
     return out.join("");
   }
 
-  private _computeId(m: MessageItem, idx: number): string {
+  private _computeId(m: MessageItem): string {
     const sent = m.sent ? new Date(m.sent as any).getTime() : 0;
     const title = (m.title || "").trim();
     const sender = (m.sender || "").trim();
     const ownId = m.id != null ? String(m.id) : "";
-    return `${ownId}|${sent}|${title}|${sender}|${idx}`.replace(/\s+/g, "_");
+    return `${ownId}|${sent}|${title}|${sender}`.replace(/\s+/g, "_");
   }
 
   private _rawMessages(): MessageItem[] {
@@ -367,12 +432,77 @@ class BakalariMessagesCard extends HTMLElement {
   }
 
   // ---- Render ----
+  //
+  private _renderBody() {
+    const messages = this._rawMessages();
+    const list = this._filtered(messages);
+    const currentIds = new Set(list.map((m) => this._computeId(m)));
+    for (const id of Array.from(this._open)) {
+      if (!currentIds.has(id)) this._open.delete(id);
+    }
+
+    const errorBlock = this._root.getElementById("error");
+    if (errorBlock) {
+      errorBlock.innerHTML = this._error
+        ? `<div class="error">${this._escape(this._error)}</div>`
+        : "";
+    }
+
+    const unreadClass = list.some((m) => m.read === false) ? "" : "unreadOff";
+    const bodyContent = !this._error
+      ? list.length
+        ? `<div class="list ${unreadClass}">
+            ${list
+              .map((m) => {
+                const id = this._computeId(m);
+                const open = this._open.has(id) ? " open" : "";
+                const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+                const textHtml = this._textHtmlFor(m);
+
+                const safeAttachments = attachments
+                  .filter((a) => !!a?.url && this._allowedUrl(String(a.url)))
+                  .map(
+                    (a) => `
+                      <li><a href="${this._escape(String(a.url))}" target="_blank" rel="noopener noreferrer">${this._escape(a.name || a.url || "")}</a></li>
+                    `,
+                  )
+                  .join("");
+
+                const attBlock = safeAttachments
+                  ? `<div class="attachments">
+                      <span class="tag">Přílohy</span>
+                      <ul>${safeAttachments}</ul>
+                    </div>`
+                  : "";
+
+                return `
+                  <div class="item${open}" data-id="${this._escape(id)}">
+                    <div class="row">
+                      <div class="bullet" style="${m.read === false ? "" : "opacity:0.15;"}"></div>
+                      <div class="meta">
+                        <div class="titleline">${this._escape(m.title || "Bez předmětu")}</div>
+                        <div class="subline">${this._escape(m.sender || "Neznámý odesílatel")}</div>
+                      </div>
+                      <div class="date">${this._escape(this._fmtDate(m.sent))}</div>
+                    </div>
+                    <div class="body">
+                      <div class="text">${textHtml}</div>
+                      ${attBlock}
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>`
+        : `<div class="empty">Žádné zprávy k zobrazení.</div>`
+      : "";
+    const body = this._root.getElementById("body");
+    if (body) body.innerHTML = bodyContent;
+  }
+
   private _render() {
     const cfg = this._config;
     if (!cfg) return;
-
-    const messages = this._rawMessages();
-    const list = this._filtered(messages);
 
     const styles = `
       :host { display:block; }
@@ -421,97 +551,17 @@ class BakalariMessagesCard extends HTMLElement {
         </div>
       </div>`;
 
-    const errorBlock = this._error ? `<div class="error">${this._escape(this._error)}</div>` : "";
-
-    const unreadClass = list.some((m) => m.read === false) ? "" : "unreadOff";
-    const bodyContent = !this._error
-      ? list.length
-        ? `<div class="list ${unreadClass}">
-            ${list
-              .map((m, idx) => {
-                const id = this._computeId(m, idx);
-                const open = this._open.has(id) ? " open" : "";
-                const attachments = Array.isArray(m.attachments) ? m.attachments : [];
-                const textHtml = this._textHtmlFor(m);
-
-                const safeAttachments = attachments
-                  .filter((a) => !!a?.url && this._allowedUrl(String(a.url)))
-                  .map(
-                    (a) => `
-                      <li><a href="${a.url}" target="_blank" rel="noopener noreferrer">${this._escape(a.name || a.url || "")}</a></li>
-                    `,
-                  )
-                  .join("");
-
-                const attBlock = safeAttachments
-                  ? `<div class="attachments">
-                      <span class="tag">Přílohy</span>
-                      <ul>${safeAttachments}</ul>
-                    </div>`
-                  : "";
-
-                return `
-                  <div class="item${open}" data-id="${this._escape(id)}">
-                    <div class="row">
-                      <div class="bullet" style="${m.read === false ? "" : "opacity:0.15;"}"></div>
-                      <div class="meta">
-                        <div class="titleline">${this._escape(m.title || "Bez předmětu")}</div>
-                        <div class="subline">${this._escape(m.sender || "Neznámý odesílatel")}</div>
-                      </div>
-                      <div class="date">${this._escape(this._fmtDate(m.sent))}</div>
-                    </div>
-                    <div class="body">
-                      <div class="text">${textHtml}</div>
-                      ${attBlock}
-                    </div>
-                  </div>
-                `;
-              })
-              .join("")}
-          </div>`
-        : `<div class="empty">Žádné zprávy k zobrazení.</div>`
-      : "";
-
     this._root.innerHTML = `
       <ha-card>
         <style>${styles}</style>
         ${header}
-        ${errorBlock}
+        <div id="error"></div>
         <div class="wrap">
-          <div id="body">
-            ${bodyContent}
-          </div>
+          <div id="body"></div>
         </div>
       </ha-card>
     `;
-
-    // Bind events
-    this._root.getElementById("search")?.addEventListener("input", (e: any) => {
-      this._query = e?.target?.value || "";
-      this._saveString(this._storageKey("search_query"), this._query);
-      this._render();
-    });
-    this._root.getElementById("onlyUnread")?.addEventListener("change", (e: any) => {
-      this._onlyUnread = !!e?.target?.checked;
-      this._saveBool(this._storageKey("only_unread"), this._onlyUnread);
-      this._render();
-    });
-
-    // Delegated click for item rows to toggle
-    this._root.addEventListener("click", (e: Event) => {
-      const target = e.target as Element | null;
-      const row = target?.closest(".row") as HTMLElement | null;
-      if (!row) return;
-      const item = row.closest(".item") as HTMLElement | null;
-      const id = item?.dataset?.id || "";
-      if (!id) return;
-      if (this._open.has(id)) this._open.delete(id);
-      else this._open.add(id);
-      // just toggle class without full re-render for snappier UX
-      if (item) {
-        item.classList.toggle("open");
-      }
-    });
+    this._renderBody();
   }
 }
 
