@@ -63,6 +63,7 @@ class BakalariMessagesCard extends HTMLElement {
   private _open = new Set<string>();
   private _query = "";
   private _onlyUnread = false;
+  private _debounceSearch: number | undefined;
 
   constructor() {
     super();
@@ -173,10 +174,19 @@ class BakalariMessagesCard extends HTMLElement {
 
   connectedCallback() {
     this._root.addEventListener("click", this._onRootClick);
+    this._root.addEventListener("input", this._onRootInput);
+    this._root.addEventListener("change", this._onRootChange);
   }
 
   disconnectedCallback() {
     this._root.removeEventListener("click", this._onRootClick);
+    this._root.removeEventListener("input", this._onRootInput);
+    this._root.removeEventListener("change", this._onRootChange);
+
+    if (this._debounceSearch !== undefined) {
+      clearTimeout(this._debounceSearch);
+      this._debounceSearch = undefined;
+    }
   }
 
   private _onRootClick = (e: Event) => {
@@ -193,6 +203,29 @@ class BakalariMessagesCard extends HTMLElement {
     else this._open.add(id);
 
     item.classList.toggle("open");
+  };
+
+  private _onRootInput = (e: Event) => {
+    const elem = e.target as HTMLInputElement | null;
+    if (!elem || elem.id !== "search") return;
+    this._query = elem.value || "";
+    this._saveString(this._storageKey("search_query"), this._query);
+
+    if (this._debounceSearch !== undefined) {
+      clearTimeout(this._debounceSearch);
+    }
+    this._debounceSearch = window.setTimeout(() => {
+      this._renderBody();
+      this._debounceSearch = undefined;
+    }, 150);
+  };
+
+  private _onRootChange = (e: Event) => {
+    const elem = e.target as HTMLInputElement | null;
+    if (!elem || elem.id !== "onlyUnread") return;
+    this._onlyUnread = !!elem.checked;
+    this._saveBool(this._storageKey("only_unread"), this._onlyUnread);
+    this._render();
   };
 
   private _storageKey(suffix: string) {
@@ -399,10 +432,8 @@ class BakalariMessagesCard extends HTMLElement {
   }
 
   // ---- Render ----
-  private _render() {
-    const cfg = this._config;
-    if (!cfg) return;
-
+  //
+  private _renderBody() {
     const messages = this._rawMessages();
     const list = this._filtered(messages);
     const currentIds = new Set(list.map((m) => this._computeId(m)));
@@ -410,54 +441,12 @@ class BakalariMessagesCard extends HTMLElement {
       if (!currentIds.has(id)) this._open.delete(id);
     }
 
-    const styles = `
-      :host { display:block; }
-      ha-card { display:block; }
-      .card-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; }
-      .title { font-weight:600; font-size:1.1rem; display:flex; align-items:center; gap:.5rem; }
-      .tools { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-      .search {
-        min-width:200px; border:1px solid var(--divider-color);
-        background: var(--card-background-color); color: var(--primary-text-color);
-        border-radius:8px; padding:6px 8px;
-      }
-      .switch { display:flex; align-items:center; gap:6px; font-size:.9rem; color: var(--secondary-text-color); user-select:none; }
-      .wrap { padding: 0 16px 12px 16px; }
-      .list { display:flex; flex-direction:column; gap:8px; }
-      .item { border:1px solid var(--divider-color); border-radius:12px; overflow:hidden; background: var(--card-background-color); }
-      .row { display:flex; gap:10px; align-items:center; padding:10px 12px; cursor:pointer; user-select:none; }
-      .bullet { width:8px; height:8px; border-radius:50%; background: var(--accent-color); opacity:.6; }
-      .meta { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
-      .titleline { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .subline { color: var(--secondary-text-color); font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-      .date { color: var(--secondary-text-color); font-size:.85rem; }
-      .body { padding:0 12px 12px 12px; display:none; -webkit-user-select:text; user-select:text; }
-      .item.open .body { display:block; }
-      .attachments { margin-top:6px; }
-      .attachments a { text-decoration:none; }
-      .empty { color: var(--secondary-text-color); padding:8px 0; }
-      .unreadOff .bullet { display:none; }
-      .tag { font-size:.75rem; padding:2px 6px; border-radius:999px; border:1px solid var(--divider-color); color: var(--secondary-text-color); }
-      .error { color: var(--error-color, #c62828); padding: 0 16px 12px; }
-    `;
-
-    const header = `
-      <div class="card-header">
-        <div class="title">${this._escape(cfg.title || "📬 Zprávy")}</div>
-        <div class="tools">
-          <label class="switch" title="Zobrazit jen nepřečtené">
-            <input type="checkbox" id="onlyUnread"${this._onlyUnread ? " checked" : ""}>
-            <span>Jen nepřečtené</span>
-          </label>
-          ${
-            cfg.show_search
-              ? `<input class="search" id="search" placeholder="Hledat ve zprávách" value="${this._escape(this._query)}">`
-              : ""
-          }
-        </div>
-      </div>`;
-
-    const errorBlock = this._error ? `<div class="error">${this._escape(this._error)}</div>` : "";
+    const errorBlock = this._root.getElementById("error");
+    if (errorBlock) {
+      errorBlock.innerHTML = this._error
+        ? `<div class="error">${this._escape(this._error)}</div>`
+        : "";
+    }
 
     const unreadClass = list.some((m) => m.read === false) ? "" : "unreadOff";
     const bodyContent = !this._error
@@ -507,31 +496,72 @@ class BakalariMessagesCard extends HTMLElement {
           </div>`
         : `<div class="empty">Žádné zprávy k zobrazení.</div>`
       : "";
+    const body = this._root.getElementById("body");
+    if (body) body.innerHTML = bodyContent;
+  }
+
+  private _render() {
+    const cfg = this._config;
+    if (!cfg) return;
+
+    const styles = `
+      :host { display:block; }
+      ha-card { display:block; }
+      .card-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; }
+      .title { font-weight:600; font-size:1.1rem; display:flex; align-items:center; gap:.5rem; }
+      .tools { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+      .search {
+        min-width:200px; border:1px solid var(--divider-color);
+        background: var(--card-background-color); color: var(--primary-text-color);
+        border-radius:8px; padding:6px 8px;
+      }
+      .switch { display:flex; align-items:center; gap:6px; font-size:.9rem; color: var(--secondary-text-color); user-select:none; }
+      .wrap { padding: 0 16px 12px 16px; }
+      .list { display:flex; flex-direction:column; gap:8px; }
+      .item { border:1px solid var(--divider-color); border-radius:12px; overflow:hidden; background: var(--card-background-color); }
+      .row { display:flex; gap:10px; align-items:center; padding:10px 12px; cursor:pointer; user-select:none; }
+      .bullet { width:8px; height:8px; border-radius:50%; background: var(--accent-color); opacity:.6; }
+      .meta { display:flex; flex-direction:column; gap:2px; flex:1; min-width:0; }
+      .titleline { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .subline { color: var(--secondary-text-color); font-size:.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .date { color: var(--secondary-text-color); font-size:.85rem; }
+      .body { padding:0 12px 12px 12px; display:none; -webkit-user-select:text; user-select:text; }
+      .item.open .body { display:block; }
+      .attachments { margin-top:6px; }
+      .attachments a { text-decoration:none; }
+      .empty { color: var(--secondary-text-color); padding:8px 0; }
+      .unreadOff .bullet { display:none; }
+      .tag { font-size:.75rem; padding:2px 6px; border-radius:999px; border:1px solid var(--divider-color); color: var(--secondary-text-color); }
+      .error { color: var(--error-color, #c62828); padding: 0 16px 12px; }
+    `;
+
+    const header = `
+      <div class="card-header">
+        <div class="title">${this._escape(cfg.title || "📬 Zprávy")}</div>
+        <div class="tools">
+          <label class="switch" title="Zobrazit jen nepřečtené">
+            <input type="checkbox" id="onlyUnread"${this._onlyUnread ? " checked" : ""}>
+            <span>Jen nepřečtené</span>
+          </label>
+          ${
+            cfg.show_search
+              ? `<input class="search" id="search" placeholder="Hledat ve zprávách" value="${this._escape(this._query)}">`
+              : ""
+          }
+        </div>
+      </div>`;
 
     this._root.innerHTML = `
       <ha-card>
         <style>${styles}</style>
         ${header}
-        ${errorBlock}
+        <div id="error"></div>
         <div class="wrap">
-          <div id="body">
-            ${bodyContent}
-          </div>
+          <div id="body"></div>
         </div>
       </ha-card>
     `;
-
-    // Bind events
-    this._root.getElementById("search")?.addEventListener("input", (e: any) => {
-      this._query = e?.target?.value || "";
-      this._saveString(this._storageKey("search_query"), this._query);
-      this._render();
-    });
-    this._root.getElementById("onlyUnread")?.addEventListener("change", (e: any) => {
-      this._onlyUnread = !!e?.target?.checked;
-      this._saveBool(this._storageKey("only_unread"), this._onlyUnread);
-      this._render();
-    });
+    this._renderBody();
   }
 }
 
