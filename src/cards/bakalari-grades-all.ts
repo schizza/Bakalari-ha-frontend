@@ -43,8 +43,20 @@
 */
 
 import { registerCard } from "./bakalari-base";
-import { LitElement, html, css } from "lit";
+import { LitElement, html } from "lit";
+import styles from "./bakalari-grades-all/styles";
+import "./bakalari-grades-all/subject-card";
+import "./bakalari-grades-all/recent-item";
+import {
+  groupMarksBySubject,
+  filteredSortedSubjectsFromAttrs,
+  subjectKeyFromSummary,
+} from "./bakalari-grades-all/subject-utils";
+import { createPersist } from "./bakalari-grades-all/persist";
+import { gradeClass, parseGradeNumber } from "./bakalari-grades-all/grade-utils";
+import { formatDateTime, safeNum as formatSafeNum } from "./shared/format";
 import { customElement, property, state } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
 
 export const CARD_VERSION = "0.3.0";
 export const CARD_TYPE = "bakalari-grades-all";
@@ -56,37 +68,7 @@ registerCard(
   "Přehled všech známek: souhrn, předměty (s rozklikem) a poslední známky.",
 );
 
-type AnyObj = Record<string, any>;
-
-interface SubjectSummary {
-  subject_id?: string;
-  subject_abbr?: string;
-  subject_name?: string;
-  count?: number;
-  new_count?: number;
-  numeric_count?: number;
-  non_numeric_count?: number;
-  last_text?: string;
-  last_date?: string;
-  avg?: number;
-  wavg?: number;
-}
-
-interface RecentMark {
-  id?: string | number;
-  date?: string;
-  subject_id?: string;
-  subject_abbr?: string;
-  subject_name?: string;
-  caption?: string;
-  theme?: string;
-  mark_text?: string;
-  is_new?: boolean;
-  is_points?: boolean;
-  points_text?: string;
-  max_points?: number;
-  teacher?: string | null;
-}
+import type { AnyObj, SubjectSummary, RecentMark } from "./bakalari-grades-all/subject-utils";
 
 interface Config {
   type?: string;
@@ -302,358 +284,9 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _openSubjects: Set<string> = new Set();
   @state() private accessor _autoExpandNew: boolean = false;
   @state() private accessor _autoApplied: boolean = false;
+  private _persist: any = null;
 
-  static styles = css`
-    :host {
-      display: block;
-    }
-    ha-card {
-      overflow: hidden;
-    }
-
-    .wrap {
-      padding: 12px 16px 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-    }
-
-    .tools {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .btn {
-      border: 1px solid var(--divider-color);
-      background: var(--card-background-color);
-      color: var(--primary-text-color);
-      padding: 6px 10px;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    .btn:hover {
-      background: color-mix(in oklab, var(--primary-color) 6%, var(--card-background-color));
-    }
-    .switch {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.95rem;
-      color: var(--secondary-text-color);
-      user-select: none;
-      margin-left: auto;
-    }
-
-    /* Summary */
-    .summary {
-      display: grid;
-      grid-template-columns: auto 1fr;
-      gap: 12px 14px;
-      align-items: center;
-    }
-    .icon {
-      color: var(--secondary-text-color);
-    }
-    .summary-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      align-items: center;
-    }
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 10px;
-      border-radius: 999px;
-      border: 1px solid var(--divider-color);
-      background: var(--card-background-color);
-      color: var(--primary-text-color);
-      font-size: 0.9rem;
-      line-height: 1;
-    }
-    .chip .label {
-      color: var(--secondary-text-color);
-      font-size: 0.85rem;
-    }
-    .chip.attn {
-      border-color: var(--accent-color);
-      background: color-mix(in oklab, var(--accent-color) 14%, transparent);
-    }
-
-    /* Subjects grid */
-    .subjects {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .subjects h4 {
-      margin: 0;
-      font-size: 1rem;
-      color: var(--primary-text-color);
-      font-weight: 600;
-    }
-    .grid {
-      --min: 260px;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(var(--min), 1fr));
-      gap: 10px;
-    }
-    .subj {
-      border: 1px solid var(--divider-color);
-      background: var(--card-background-color);
-      border-radius: 12px;
-      padding: 10px 12px;
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      grid-template-areas:
-        "icon name meta"
-        "last last last"
-        "marks marks marks";
-      column-gap: 10px;
-      row-gap: 8px;
-      align-items: center;
-      min-width: 0;
-      cursor: pointer;
-      transition: background 120ms ease;
-    }
-    .subj:hover {
-      background: color-mix(in oklab, var(--primary-color) 4%, var(--card-background-color));
-    }
-    .sicon {
-      grid-area: icon;
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-      border: 1px solid var(--divider-color);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      color: var(--primary-text-color);
-      background: var(--secondary-background-color, rgba(0, 0, 0, 0.04));
-      letter-spacing: 0.4px;
-    }
-    .name {
-      grid-area: name;
-      min-width: 0;
-    }
-    .name .title {
-      font-weight: 700;
-      color: var(--primary-text-color);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .name .sub {
-      color: var(--secondary-text-color);
-      font-size: 0.85rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .meta {
-      grid-area: meta;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 4px;
-    }
-    .kpi {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-    .pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      border: 1px solid var(--divider-color);
-      background: var(--card-background-color);
-      font-size: 0.85rem;
-      line-height: 1;
-    }
-    .caret {
-      margin-left: 8px;
-      font-size: 0.95rem;
-      color: var(--secondary-text-color);
-    }
-    .mark {
-      font-weight: 800;
-      min-width: 1.6em;
-      text-align: center;
-      padding: 2px 8px;
-      border-radius: 10px;
-      border: 1px solid var(--divider-color);
-      background: var(--secondary-background-color, rgba(0, 0, 0, 0.05));
-      color: var(--primary-text-color);
-      letter-spacing: 0.3px;
-    }
-    .last {
-      grid-area: last;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-      color: var(--secondary-text-color);
-      font-size: 0.9rem;
-    }
-    .last .caption {
-      font-size: 0.75rem;
-      padding: 2px 6px;
-      border-radius: 999px;
-      border: 1px solid var(--divider-color);
-      color: var(--secondary-text-color);
-      background: var(--card-background-color);
-    }
-    .last .theme {
-      min-width: 0;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      color: var(--primary-text-color);
-    }
-    .last .date {
-      margin-left: auto;
-    }
-    .marks {
-      grid-area: marks;
-      display: none;
-      border-top: 1px dashed var(--divider-color);
-      padding-top: 8px;
-    }
-    .subj.open .marks {
-      display: block;
-    }
-    .mlist {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-    .mrow {
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      grid-template-areas:
-        "m mtitle mdate"
-        "m mtheme mdate";
-      gap: 4px 10px;
-      align-items: center;
-      padding: 4px 0;
-      border-radius: 8px;
-    }
-    .mrow .m {
-      grid-area: m;
-      min-width: 40px;
-      text-align: center;
-    }
-    .mrow .mtitle {
-      grid-area: mtitle;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      font-weight: 600;
-      color: var(--primary-text-color);
-    }
-    .mrow .mtheme {
-      grid-area: mtheme;
-      color: var(--secondary-text-color);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      font-size: 0.92rem;
-    }
-    .mrow .mdate {
-      grid-area: mdate;
-      color: var(--secondary-text-color);
-      font-size: 0.9rem;
-      text-align: right;
-      white-space: nowrap;
-      margin-left: 8px;
-    }
-    .badge {
-      font-size: 0.7rem;
-      padding: 2px 6px;
-      border-radius: 999px;
-      border: 1px solid var(--divider-color);
-      color: var(--secondary-text-color);
-      background: var(--card-background-color);
-    }
-
-    /* Recent */
-    .recent {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .recent h4 {
-      margin: 0;
-      font-size: 1rem;
-      color: var(--primary-text-color);
-      font-weight: 600;
-    }
-    .item {
-      border: 1px solid var(--divider-color);
-      background: var(--card-background-color);
-      border-radius: 12px;
-      padding: 10px 12px;
-      display: grid;
-      grid-template-columns: auto 1fr auto;
-      grid-template-areas:
-        "mark title date"
-        "mark theme date";
-      column-gap: 10px;
-      row-gap: 4px;
-      align-items: center;
-      min-width: 0;
-    }
-    .item .mark {
-      grid-area: mark;
-      min-width: 44px;
-      font-size: 1.1rem;
-    }
-    .item .title {
-      grid-area: title;
-      font-weight: 700;
-      color: var(--primary-text-color);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .item .theme {
-      grid-area: theme;
-      color: var(--secondary-text-color);
-      font-size: 0.9rem;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: flex;
-      gap: 8px;
-      align-items: center;
-    }
-    .item .date {
-      grid-area: date;
-      color: var(--secondary-text-color);
-      font-size: 0.9rem;
-      text-align: right;
-      white-space: nowrap;
-      margin-left: 8px;
-    }
-    .empty,
-    .error {
-      color: var(--secondary-text-color);
-      font-size: 0.95rem;
-    }
-    .error {
-      color: var(--error-color, #c62828);
-    }
-  `;
+  static styles = styles;
 
   setConfig(config: Config) {
     if (!config || !config.entity) {
@@ -682,15 +315,13 @@ export class BakalariGradesAllCard extends LitElement {
       type: `custom:${CARD_TYPE}`,
     };
     // načti perzistované rozbalené předměty a přepínač auto-rozbalení
+    this._persist = createPersist(this._config.entity);
     if (this._config.persist_open_subjects !== false) {
-      this._openSubjects = this._loadSet(this._storageKey("open_subjects"));
+      this._openSubjects = this._persist.loadSet("open_subjects");
     } else {
       this._openSubjects.clear();
     }
-    this._autoExpandNew = this._loadBool(
-      this._storageKey("auto_expand_new"),
-      !!this._config.auto_expand_new,
-    );
+    this._autoExpandNew = this._persist.loadBool("auto_expand_new", !!this._config.auto_expand_new);
     this._autoApplied = false;
 
     // normalize include/exclude lists (allow comma-separated string or array)
@@ -712,58 +343,21 @@ export class BakalariGradesAllCard extends LitElement {
     return this._config.name || this._config.title || "Bakaláři – Všechny známky";
   }
 
+  private _gradeClass(txt?: string): string {
+    return gradeClass(txt, this._config.show_colors !== false);
+  }
+
   private _fmtDate(iso?: string): string {
-    if (!iso) return "";
-    const lang = this.hass?.locale?.language || "cs-CZ";
-    try {
-      return new Date(iso).toLocaleString(lang, {
-        dateStyle: "medium",
-        timeStyle: "short",
-      } as any);
-    } catch {
-      return String(iso);
-    }
+    const locale = this.hass?.locale?.language || undefined;
+    return formatDateTime(iso, { locale });
   }
 
   private _gradeNumber(txt?: string): number | null {
-    if (!txt) return null;
-    const s = String(txt).trim().replace(",", ".");
-    const m = s.match(/^([1-5])(\.\d+)?$/);
-    if (!m) return null;
-    const n = parseFloat(s);
-    if (Number.isFinite(n)) return n;
-    return null;
-  }
-
-  private _markStyle(txt?: string): string {
-    if (this._config.show_colors === false) return "";
-    const n = this._gradeNumber(txt);
-    const colors: Record<number, string> = {
-      1: "#2e7d32",
-      2: "#558b2f",
-      3: "#f9a825",
-      4: "#ef6c00",
-      5: "#c62828",
-    };
-    if (n && n >= 1 && n <= 5) {
-      const c = colors[Math.round(n as number)] || "#888";
-      return `background: color-mix(in oklab, ${c} 20%, transparent); border-color: ${c}40;`;
-    }
-    return "";
-  }
-
-  private _abbr(s?: string): string {
-    return (s ?? "").trim();
-  }
-
-  private _subjectTitle(s: SubjectSummary): string {
-    return (s.subject_name || this._abbr(s.subject_abbr) || "Neznámý předmět").trim();
+    return parseGradeNumber(txt);
   }
 
   private _safeNum(n: any, digits = 3): string {
-    const v = Number(n);
-    if (!Number.isFinite(v)) return "—";
-    return v.toFixed(digits).replace(/\.?0+$/, (m) => (m.startsWith(".") ? m.slice(1) : ""));
+    return formatSafeNum(n, digits);
   }
 
   private _icon(attrs: AnyObj): string {
@@ -771,196 +365,51 @@ export class BakalariGradesAllCard extends LitElement {
   }
 
   // ---------- Persistence utils ----------
-  private _storageKey(suffix: string) {
-    const ent = (this._config?.entity || "unknown").replace(/\W+/g, "_");
-    return `bakalari_grades_all_${ent}_${suffix}`;
-  }
-  private _loadSet(key: string): Set<string> {
-    try {
-      const v = localStorage.getItem(key);
-      if (!v) return new Set();
-      const arr = JSON.parse(v);
-      if (Array.isArray(arr)) return new Set(arr.map((s) => String(s)));
-      return new Set();
-    } catch {
-      return new Set();
-    }
-  }
-  private _saveSet(key: string, set: Set<string>) {
-    try {
-      localStorage.setItem(key, JSON.stringify(Array.from(set)));
-    } catch {
-      // ignore
-    }
-  }
-  private _loadBool(key: string, fallback = false) {
-    try {
-      const v = localStorage.getItem(key);
-      if (v === null) return fallback;
-      return v === "1";
-    } catch {
-      return fallback;
-    }
-  }
-  private _saveBool(key: string, value: boolean) {
-    try {
-      localStorage.setItem(key, value ? "1" : "0");
-    } catch {
-      // ignore
-    }
-  }
 
   // ---------- Group & sort ----------
-  private _normId(id?: string): string {
-    return (id ?? "").trim();
-  }
-  private _subjectKeyFromSummary(s: SubjectSummary): string {
-    return (
-      this._normId(s.subject_id as any) ||
-      this._abbr(s.subject_abbr) ||
-      (s.subject_name || "").trim()
-    );
-  }
-  private _subjectKeyFromMark(m: RecentMark): string {
-    return (
-      this._normId(m.subject_id as any) ||
-      this._abbr(m.subject_abbr) ||
-      (m.subject_name || "").trim()
-    );
-  }
 
-  private _groupMarks(attrs: AnyObj): Map<string, RecentMark[]> {
-    const map = new Map<string, RecentMark[]>();
-    // resolve source attribute for ALL marks
-    const pref = (this._config.marks_attribute || "recent").trim();
-    let src: any = attrs?.[pref];
-    if (!Array.isArray(src)) {
-      // fallbacks
-      src = Array.isArray(attrs?.all)
-        ? attrs.all
-        : Array.isArray(attrs?.marks)
-          ? attrs.marks
-          : Array.isArray(attrs?.recent)
-            ? attrs.recent
-            : [];
+  private _updateOpenSubjects(mutator: (subjects: Set<string>) => void) {
+    const copy = new Set(this._openSubjects);
+    mutator(copy);
+    this._openSubjects = copy;
+    if (this._config.persist_open_subjects !== false) {
+      this._persist?.saveSet("open_subjects", this._openSubjects);
     }
-    const rec: RecentMark[] = src as RecentMark[];
-    for (const m of rec) {
-      const k = this._subjectKeyFromMark(m);
-      if (!k) continue;
-      const arr = map.get(k) || [];
-      arr.push(m);
-      map.set(k, arr);
-    }
-    // sort each subject's marks desc by date
-    for (const [k, arr] of map) {
-      arr.sort((a, b) => {
-        const at = new Date(a.date || 0).getTime();
-        const bt = new Date(b.date || 0).getTime();
-        return bt - at;
-      });
-      map.set(k, arr);
-    }
-    return map;
-  }
-
-  private _filteredSortedSubjects(attrs: AnyObj): SubjectSummary[] {
-    let list: SubjectSummary[] = Array.isArray(attrs?.by_subject) ? attrs.by_subject.slice() : [];
-    if (!list.length) return [];
-
-    const minCount = Math.max(0, Number(this._config.filter_subjects_min_count || 0));
-    const include = (this._config.include_subject_ids || []).map((s) => this._normId(String(s)));
-    const exclude = (this._config.exclude_subject_ids || []).map((s) => this._normId(String(s)));
-
-    list = list.filter((s) => {
-      const key = this._subjectKeyFromSummary(s);
-      if (!key) return false;
-      if (include.length && !include.includes(this._normId(String(s.subject_id || key))))
-        return false;
-      if (exclude.length && exclude.includes(this._normId(String(s.subject_id || key))))
-        return false;
-      if (Number(s.count || 0) < minCount) return false;
-      return true;
-    });
-
-    const by = (this._config.sort_subjects_by || "name").toLowerCase();
-    const dir = (this._config.sort_subjects_dir || "asc").toLowerCase();
-    const asc = dir === "asc";
-
-    const byVal = (s: SubjectSummary): any => {
-      switch (by) {
-        case "abbr":
-          return this._abbr(s.subject_abbr);
-        case "count":
-          return Number(s.count || 0);
-        case "avg":
-          return Number(s.avg ?? Number.POSITIVE_INFINITY);
-        case "wavg":
-          return Number(s.wavg ?? Number.POSITIVE_INFINITY);
-        case "last_date":
-          return new Date(s.last_date || 0).getTime();
-        case "name":
-        default:
-          return this._subjectTitle(s).toLowerCase();
-      }
-    };
-
-    list.sort((a, b) => {
-      const av = byVal(a);
-      const bv = byVal(b);
-      if (av < bv) return -1;
-      if (av > bv) return 1;
-      return 0;
-    });
-    if (!asc) list.reverse();
-
-    const lim = Math.max(0, Number(this._config.limit_subjects || 0));
-    if (lim > 0) list = list.slice(0, lim);
-
-    return list;
   }
 
   private _toggleSubject(key: string, ev?: Event) {
     ev?.stopPropagation?.();
     if (!key) return;
-    if (this._openSubjects.has(key)) this._openSubjects.delete(key);
-    else this._openSubjects.add(key);
-    if (this._config.persist_open_subjects !== false) {
-      this._saveSet(this._storageKey("open_subjects"), this._openSubjects);
-    }
-    this.requestUpdate();
+    this._updateOpenSubjects((subjs) => (subjs.has(key) ? subjs.delete(key) : subjs.add(key)));
   }
 
   private _expandAll(attrs: AnyObj) {
-    const list = this._filteredSortedSubjects(attrs);
-    for (const s of list) {
-      const key = this._subjectKeyFromSummary(s);
-      if (key) this._openSubjects.add(key);
-    }
-    if (this._config.persist_open_subjects !== false) {
-      this._saveSet(this._storageKey("open_subjects"), this._openSubjects);
-    }
-    this.requestUpdate();
+    const list = filteredSortedSubjectsFromAttrs(attrs, this._config);
+    this._updateOpenSubjects((subjs) => {
+      for (const subj of list) {
+        const key = subjectKeyFromSummary(subj);
+        if (key) subjs.add(key);
+      }
+    });
   }
+
   private _collapseAll() {
-    this._openSubjects.clear();
-    if (this._config.persist_open_subjects !== false) {
-      this._saveSet(this._storageKey("open_subjects"), this._openSubjects);
-    }
-    this.requestUpdate();
+    this._updateOpenSubjects((subjs) => {
+      subjs.clear();
+    });
   }
   private _onToggleAutoExpand(e: any) {
     const v = !!e?.target?.checked;
     this._autoExpandNew = v;
-    this._saveBool(this._storageKey("auto_expand_new"), v);
+    this._persist?.saveBool("auto_expand_new", v);
     this._autoApplied = false; // re-apply on next render if turning on
-    this.requestUpdate();
   }
+
   private _applyAutoExpand(attrs: AnyObj) {
     const days = Math.max(0, Number(this._config.auto_expand_days || 7));
     if (!days) return;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    const grouped = this._groupMarks(attrs);
+    const grouped = groupMarksBySubject(attrs, this._config.marks_attribute);
     let changed = false;
     for (const [key, arr] of grouped.entries()) {
       if (!arr || !arr.length) continue;
@@ -971,105 +420,44 @@ export class BakalariGradesAllCard extends LitElement {
       }
     }
     if (changed && this._config.persist_open_subjects !== false) {
-      this._saveSet(this._storageKey("open_subjects"), this._openSubjects);
+      this._persist?.saveSet("open_subjects", this._openSubjects);
     }
     this._autoApplied = true;
   }
   private _subjectsBlock(attrs: AnyObj) {
-    const list: SubjectSummary[] = this._filteredSortedSubjects(attrs);
+    const list: SubjectSummary[] = filteredSortedSubjectsFromAttrs(attrs, this._config);
     if (!list.length) {
       return html`<div class="empty">K předmětům nejsou data.</div>`;
     }
-    const grouped = this._groupMarks(attrs);
+    const grouped = groupMarksBySubject(attrs, this._config.marks_attribute);
 
     return html`
       <div class="subjects">
         <h4>Předměty</h4>
         <div class="grid">
-          ${list.map((s) => {
-            const key = this._subjectKeyFromSummary(s);
-            const open = this._openSubjects.has(key);
-            const abbr = this._abbr(s.subject_abbr || "");
-            const title = this._subjectTitle(s);
-            const count = Number(s.count || 0);
-            const avg = this._safeNum(s.avg, 3);
-            const wavg = this._safeNum(s.wavg, 3);
-            const lastText = s.last_text ? String(s.last_text) : "";
-            const lastDate = this._fmtDate(s.last_date || "");
+          ${repeat(
+            list,
+            (s) => subjectKeyFromSummary(s),
+            (s) => {
+              const key = subjectKeyFromSummary(s);
+              const open = this._openSubjects.has(key);
 
-            const marks = grouped.get(key) || [];
-            const sLimit = Math.max(0, Number(this._config.limit_subject_marks || 0));
-            const mlist = sLimit > 0 ? marks.slice(0, sLimit) : marks;
+              const marks = grouped.get(key) || [];
 
-            return html`
-              <div
-                class="subj ${open ? "open" : ""}"
-                title=${title}
-                @click=${(e: Event) => this._toggleSubject(key, e)}
-              >
-                <div class="sicon" aria-hidden="true">${abbr || "?"}</div>
-                <div class="name">
-                  <div class="title">
-                    ${title}
-                    <span class="caret">${open ? "▾" : "▸"}</span>
-                  </div>
-                  <div class="sub">
-                    ${count} známek • Průměr ${avg}${wavg !== "—" ? html` • Vážený ${wavg}` : ""}
-                  </div>
-                </div>
-                <div class="meta">
-                  <div class="kpi">
-                    <span class="pill"
-                      ><span class="label">Počet</span> <strong>${count}</strong></span
-                    >
-                    <span class="pill"><span class="label">Ø</span> <strong>${avg}</strong></span>
-                    ${wavg !== "—"
-                      ? html`<span class="pill"
-                          ><span class="label">WØ</span> <strong>${wavg}</strong></span
-                        >`
-                      : null}
-                  </div>
-                </div>
-                <div class="last">
-                  <span class="label">Poslední:</span>
-                  <span class="mark" style=${this._markStyle(lastText)}>${lastText || "—"}</span>
-                  <span class="theme"></span>
-                  <span class="date">${lastDate}</span>
-                </div>
-
-                <div class="marks" @click=${(e: Event) => e.stopPropagation()}>
-                  ${mlist.length
-                    ? html`
-                        <div class="mlist">
-                          ${mlist.map((m) => {
-                            const mMark = (m.mark_text || "").trim();
-                            const mDate = this._fmtDate(m.date);
-                            const mTheme = (m.theme || "").trim();
-                            const mCaption = (m.caption || "").trim();
-                            return html`
-                              <div class="mrow">
-                                <div class="m mark" style=${this._markStyle(mMark)}>
-                                  ${mMark || "—"}
-                                </div>
-                                <div class="mtitle">${title}</div>
-                                <div class="mdate">${mDate}</div>
-                                <div class="mtheme">
-                                  ${mCaption ? html`<span class="badge">${mCaption}</span>` : null}
-                                  <span class="t">${mTheme || "—"}</span>
-                                </div>
-                              </div>
-                            `;
-                          })}
-                        </div>
-                      `
-                    : html`<div class="empty">
-                        K tomuto předmětu nejsou dostupné jednotlivé známky (chybí v atributu
-                        "recent").
-                      </div>`}
-                </div>
-              </div>
-            `;
-          })}
+              return html`
+                <bka-subject-card
+                  .subject=${s}
+                  .marks=${marks}
+                  .open=${open}
+                  .showColors=${this._config.show_colors !== false}
+                  .limitSubjectMarks=${this._config.limit_subject_marks || 0}
+                  .subjectKey=${key}
+                  .formatDate=${(iso: string) => this._fmtDate(iso)}
+                  @toggle-subject=${() => this._toggleSubject(key)}
+                ></bka-subject-card>
+              `;
+            },
+          )}
         </div>
       </div>
     `;
@@ -1093,24 +481,19 @@ export class BakalariGradesAllCard extends LitElement {
     return html`
       <div class="recent">
         <h4>Poslední známky</h4>
-        ${list.map((m) => {
-          const subj = (m.subject_name || this._abbr(m.subject_abbr) || "Neznámý předmět").trim();
-          const theme = (m.theme || "").trim();
-          const caption = (m.caption || "").trim();
-          const mark = (m.mark_text || "").trim();
-          const date = this._fmtDate(m.date);
-          return html`
-            <div class="item">
-              <div class="mark" style=${this._markStyle(mark)}>${mark || "—"}</div>
-              <div class="title">${subj}</div>
-              <div class="date">${date}</div>
-              <div class="theme">
-                ${caption ? html`<span class="badge" title="Typ">${caption}</span>` : null}
-                <span class="t">${theme || "—"}</span>
-              </div>
-            </div>
-          `;
-        })}
+        ${repeat(
+          list,
+          (m) => m.id ?? `${m.subject_id}-${m.date}-${m.mark_text}`,
+          (m) => {
+            return html`
+              <bka-recent-item
+                .mark=${m}
+                .showColors=${this._config.show_colors !== false}
+                .formatDate=${(iso: string) => this._fmtDate(iso)}
+              ></bka-recent-item>
+            `;
+          },
+        )}
       </div>
     `;
   }
