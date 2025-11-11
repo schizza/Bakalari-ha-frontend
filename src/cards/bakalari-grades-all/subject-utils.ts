@@ -37,6 +37,22 @@ export interface RecentMark {
   teacher?: string | null;
 }
 
+export interface Mark {
+  id?: string | number;
+  date?: string;
+  subject_id?: string;
+  subject_abbr?: string;
+  subject_name?: string;
+  caption?: string;
+  theme?: string;
+  mark_text?: string;
+  is_new?: boolean;
+  is_points?: boolean;
+  points_text?: string;
+  max_points?: number;
+  teacher?: string | null;
+}
+
 export interface ConfigForSubjects {
   // sorting/filtering
   sort_subjects_by?: "name" | "abbr" | "count" | "avg" | "wavg" | "last_date";
@@ -65,16 +81,23 @@ export function subjectTitle(s: SubjectSummary, fallback = "Neznámý předmět"
 }
 
 export function subjectKeyFromSummary(s: SubjectSummary): string {
-  return normalizeId(s.subject_id as any) || abbr(s.subject_abbr) || String(s.subject_name ?? "").trim();
+  return (
+    normalizeId(s.subject_id as any) || abbr(s.subject_abbr) || String(s.subject_name ?? "").trim()
+  );
 }
 
 export function subjectKeyFromMark(m: RecentMark): string {
-  return normalizeId(m.subject_id as any) || abbr(m.subject_abbr) || String(m.subject_name ?? "").trim();
+  return (
+    normalizeId(m.subject_id as any) || abbr(m.subject_abbr) || String(m.subject_name ?? "").trim()
+  );
 }
 
 /* --------------------------------- Marks --------------------------------- */
+export function extractAllMarksBySubject(attrs: AnyObj): Mark[] {
+  
+}
 
-export function extractAllMarks(attrs: AnyObj, marksAttributePref?: string): RecentMark[] {
+export function extractAllMarks(attrs: AnyObj): RecentMark[] {
   const pref = String(marksAttributePref || "recent").trim();
   let src: any = attrs?.[pref];
   if (!Array.isArray(src)) {
@@ -152,7 +175,9 @@ export function filteredSortedSubjects(
     return true;
   });
 
-  const by = String(cfg.sort_subjects_by || "name").toLowerCase() as ConfigForSubjects["sort_subjects_by"];
+  const by = String(
+    cfg.sort_subjects_by || "name",
+  ).toLowerCase() as ConfigForSubjects["sort_subjects_by"];
   const dir = String(cfg.sort_subjects_dir || "asc").toLowerCase();
   const asc = dir === "asc";
 

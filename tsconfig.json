@@ -5,7 +5,10 @@
     "moduleResolution": "Bundler",
     "lib": ["ES2020", "DOM"],
     "strict": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "sourceMap": true,
+    "inlineSources": true,
+    "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src/**/*"]
 }
