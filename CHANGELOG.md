@@ -1,5 +1,16 @@
 # Changelog
 
+# 0.4.0
+
+## ✨ Nové funkce
+
+**Refactor/grades all  (#50) @schizza**
+- Refaktorizace karty`Všechny známky` tak, aby využívala nově vzniklé senzory pro známky.
+- Odstraňuje zastaralou variantu spolu se souvisejícími pomocnými funkcemi a styly.
+- Mění práci s předměty tak, aby využívala jednodušší systém založený na senzorech pomocí sensor_map.
+- Zjednodušené získávání a třídění známek.
+- Rozdělení logiky do menších, znovu použitelných částí.
+
 # 0.3.2
 
 ## Co je nového
