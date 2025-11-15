@@ -5,6 +5,9 @@
  * from the card component to keep rendering code clean and reusable.
  */
 
+import { Config } from '../bakalari-grades-all';
+import type { HomeAssistant } from "custom-card-helpers"
+
 export type AnyObj = Record<string, any>;
 
 export interface SubjectSummary {
@@ -93,8 +96,14 @@ export function subjectKeyFromMark(m: RecentMark): string {
 }
 
 /* --------------------------------- Marks --------------------------------- */
-export function extractAllMarks(attrs: AnyObj, marksAttributePref?: string): RecentMark[] {
-  const pref = String(marksAttributePref || "recent").trim();
+
+/**
+ * Extrahuje známky z předaného objektu (objekt musí obsahovat pole "recent")
+ * @param attrs
+ * @returns
+ */
+export function extractAllMarks(attrs: AnyObj): RecentMark[] {
+  const pref = "recent";
   let src: any = attrs?.[pref];
   if (!Array.isArray(src)) {
     // fallbacks similar to original implementation
@@ -111,10 +120,9 @@ export function extractAllMarks(attrs: AnyObj, marksAttributePref?: string): Rec
  */
 export function groupMarksBySubject(
   attrs: AnyObj,
-  marksAttributePref?: string,
 ): Map<string, RecentMark[]> {
   const grouped = new Map<string, RecentMark[]>();
-  const rec: RecentMark[] = extractAllMarks(attrs, marksAttributePref);
+  const rec: RecentMark[] = extractAllMarks(attrs);
 
   for (const m of rec) {
     const key = subjectKeyFromMark(m);
@@ -137,6 +145,65 @@ export function groupMarksBySubject(
 }
 
 /* ------------------------------- Subjects -------------------------------- */
+
+/**
+ * Vrací seznam senzorů s předměty z `Helper` senzoru.
+ *
+ * @param hass
+ * @param config
+ * @returns
+ */
+export function getSubjectsSensorNames(hass: HomeAssistant, config: Config) {
+
+  const entityId = config?.entity;
+  if (!entityId) return [];
+
+  const state = hass.states[entityId];
+  if (!state) return [];
+
+  const sensorMap: unknown = state.attributes["sensor_map"];
+
+  if (!sensorMap) return [];
+
+  return Object.values(sensorMap as Record<string, string>)
+}
+
+export function getSubjectInfoAndMarskFromSensor(hass: HomeAssistant, sensor_name: string): {
+  subject: SubjectSummary;
+  marks: RecentMark[];
+} {
+
+  if (!sensor_name) return { subject: {}, marks: [] };
+
+  const sensor = hass?.states[sensor_name];
+  if (!sensor) return { subject: {}, marks: [] };
+
+  const subject = extractSubjectInfo(sensor)
+  const marks = extractAllMarks(sensor["attributes"])
+
+  return { subject, marks }
+}
+
+export function extractSubjectInfo(sensor: any): SubjectSummary {
+  const attr = sensor["attributes"];
+  const subj = attr["subject"] as Record<string, any>;
+
+  const summary: SubjectSummary = {
+    subject_id: subj["subject_id"],
+    subject_name: subj["subject_name"],
+    subject_abbr: subj["subject_abbr"],
+    count: subj["count"],
+    new_count: subj["new_count"],
+    numeric_count: subj["numeric_count"],
+    non_numeric_count: subj["non_numeric_count"],
+    last_text: subj["last_text"],
+    last_date: subj["last_date"],
+    avg: subj["avg"],
+    wavg: subj["wavg"],
+  }
+
+  return summary;
+}
 
 export function extractSubjects(attrs: AnyObj): SubjectSummary[] {
   const list: any = Array.isArray(attrs?.by_subject) ? attrs.by_subject : [];

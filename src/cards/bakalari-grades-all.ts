@@ -49,11 +49,9 @@ import "./bakalari-grades-all/subject-card";
 import "./bakalari-grades-all/recent-item";
 import {
   groupMarksBySubject,
-  filteredSortedSubjectsFromAttrs,
-  subjectKeyFromSummary,
+  getSubjectsSensorNames,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
-import { gradeClass, parseGradeNumber } from "./bakalari-grades-all/grade-utils";
 import { formatDateTime, safeNum as formatSafeNum } from "./shared/format";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
@@ -68,9 +66,12 @@ registerCard(
   "Přehled všech známek: souhrn, předměty (s rozklikem) a poslední známky.",
 );
 
-import type { AnyObj, SubjectSummary, RecentMark } from "./bakalari-grades-all/subject-utils";
+import type { AnyObj, RecentMark } from "./bakalari-grades-all/subject-utils";
 
-interface Config {
+/**
+ * Core configuration for the Bakaláři grades card.
+ */
+export interface Config {
   type?: string;
   entity: string;
   name?: string;
@@ -102,8 +103,12 @@ interface Config {
   auto_expand_days?: number; // how many days back is considered "new" (default 7)
 }
 
+/**
+ * Basic custom element card.
+ */
 @customElement(CARD_TYPE)
 export class BakalariGradesAllCard extends LitElement {
+
   // YAML Editor
   static getConfigForm() {
     return {
@@ -230,6 +235,7 @@ export class BakalariGradesAllCard extends LitElement {
     };
   }
 
+  // Default config on card creation
   static getStubConfig(): any {
     return {
       entity: "sensor.bakalari_grades_all",
@@ -324,37 +330,38 @@ export class BakalariGradesAllCard extends LitElement {
     this._autoExpandNew = this._persist.loadBool("auto_expand_new", !!this._config.auto_expand_new);
     this._autoApplied = false;
 
-    // normalize include/exclude lists (allow comma-separated string or array)
-    const toList = (v: any) => {
-      if (Array.isArray(v)) return v.map((x) => String(x));
-      if (typeof v === "string")
-        return v
-          .split(/[,\n]/)
-          .map((s) => s.trim())
-          .filter(Boolean);
-      return [];
-    };
-    // keep original if already array or convert string -> array
-    (this._config as any).include_subject_ids = toList(this._config.include_subject_ids);
-    (this._config as any).exclude_subject_ids = toList(this._config.exclude_subject_ids);
+    // TODO: Create new include / exclude configuration item, as we don`t track subjects by it`s ID
+    //
+    //   const toList = (v: any) => {
+    //     if (Array.isArray(v)) return v.map((x) => String(x));
+    //     if (typeof v === "string")
+    //       return v
+    //         .split(/[,\n]/)
+    //         .map((s) => s.trim())
+    //         .filter(Boolean);
+    //     return [];
+    //   };
+    //   // keep original if already array or convert string -> array
+    //   (this._config as any).include_subject_ids = toList(this._config.include_subject_ids);
+    //   (this._config as any).exclude_subject_ids = toList(this._config.exclude_subject_ids);
   }
 
   private _name(): string {
     return this._config.name || this._config.title || "Bakaláři – Všechny známky";
   }
 
-  private _gradeClass(txt?: string): string {
-    return gradeClass(txt, this._config.show_colors !== false);
-  }
+  // private _gradeClass(txt?: string): string {
+  //   return gradeClass(txt, this._config.show_colors !== false);
+  // }
 
   private _fmtDate(iso?: string): string {
     const locale = this.hass?.locale?.language || undefined;
     return formatDateTime(iso, { locale });
   }
 
-  private _gradeNumber(txt?: string): number | null {
-    return parseGradeNumber(txt);
-  }
+  // private _gradeNumber(txt?: string): number | null {
+  //   return parseGradeNumber(txt);
+  // }
 
   private _safeNum(n: any, digits = 3): string {
     return formatSafeNum(n, digits);
@@ -364,10 +371,12 @@ export class BakalariGradesAllCard extends LitElement {
     return attrs?.icon || "mdi:book-education";
   }
 
-  // ---------- Persistence utils ----------
-
   // ---------- Group & sort ----------
 
+  /**
+   * Update state of open subjects.
+   * @param mutator
+   */
   private _updateOpenSubjects(mutator: (subjects: Set<string>) => void) {
     const copy = new Set(this._openSubjects);
     mutator(copy);
@@ -376,28 +385,43 @@ export class BakalariGradesAllCard extends LitElement {
       this._persist?.saveSet("open_subjects", this._openSubjects);
     }
   }
-
+  /**
+   * Toggle a subject's open state.
+   * @param key
+   * @param ev
+   * @returns
+   */
   private _toggleSubject(key: string, ev?: Event) {
     ev?.stopPropagation?.();
     if (!key) return;
     this._updateOpenSubjects((subjs) => (subjs.has(key) ? subjs.delete(key) : subjs.add(key)));
   }
 
-  private _expandAll(attrs: AnyObj) {
-    const list = filteredSortedSubjectsFromAttrs(attrs, this._config);
+  /**
+   * Open all subjects
+   */
+  private _expandAll() {
+    const list = getSubjectsSensorNames(this.hass, this._config)
     this._updateOpenSubjects((subjs) => {
       for (const subj of list) {
-        const key = subjectKeyFromSummary(subj);
-        if (key) subjs.add(key);
+        subjs.add(subj);
       }
     });
   }
 
+  /**
+   * Close all subjects.
+   */
   private _collapseAll() {
     this._updateOpenSubjects((subjs) => {
       subjs.clear();
     });
   }
+
+  /**
+   * Save Auto-expand option to save-state
+   * @param e
+   */
   private _onToggleAutoExpand(e: any) {
     const v = !!e?.target?.checked;
     this._autoExpandNew = v;
@@ -405,11 +429,16 @@ export class BakalariGradesAllCard extends LitElement {
     this._autoApplied = false; // re-apply on next render if turning on
   }
 
+  /**
+   * TODO: Fix auto expand
+   * @param attrs
+   * @returns
+   */
   private _applyAutoExpand(attrs: AnyObj) {
     const days = Math.max(0, Number(this._config.auto_expand_days || 7));
     if (!days) return;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
-    const grouped = groupMarksBySubject(attrs, this._config.marks_attribute);
+    const grouped = groupMarksBySubject(attrs);
     let changed = false;
     for (const [key, arr] of grouped.entries()) {
       if (!arr || !arr.length) continue;
@@ -424,45 +453,46 @@ export class BakalariGradesAllCard extends LitElement {
     }
     this._autoApplied = true;
   }
-  private _subjectsBlock(attrs: AnyObj) {
-    const list: SubjectSummary[] = filteredSortedSubjectsFromAttrs(attrs, this._config);
+
+  /**
+   * Render subject block
+   * @returns
+   */
+  private _subjectsBlock() {
+    const list: string[] = getSubjectsSensorNames(this.hass, this._config)
     if (!list.length) {
       return html`<div class="empty">K předmětům nejsou data.</div>`;
     }
-    const grouped = groupMarksBySubject(attrs, this._config.marks_attribute);
-
     return html`
       <div class="subjects">
         <h4>Předměty</h4>
         <div class="grid">
           ${repeat(
-            list,
-            (s) => subjectKeyFromSummary(s),
-            (s) => {
-              const key = subjectKeyFromSummary(s);
-              const open = this._openSubjects.has(key);
-
-              const marks = grouped.get(key) || [];
-
-              return html`
-                <bka-subject-card
-                  .subject=${s}
-                  .marks=${marks}
+      list,
+      (s) => {
+        const open = this._openSubjects.has(s);
+        return html`
+                <bka-subject-card-new
+                  .subjects=${s}
                   .open=${open}
+                  .hass=${this.hass}
+                  .openKeys=${this._openSubjects}
                   .showColors=${this._config.show_colors !== false}
-                  .limitSubjectMarks=${this._config.limit_subject_marks || 0}
-                  .subjectKey=${key}
-                  .formatDate=${(iso: string) => this._fmtDate(iso)}
-                  @toggle-subject=${() => this._toggleSubject(key)}
-                ></bka-subject-card>
+                  @toggle-subject=${(e: CustomEvent<{ key: string }>) => this._toggleSubject(e.detail.key, e)}
+                ></bka-subject-card-new>
               `;
-            },
-          )}
+      },
+    )}
         </div>
       </div>
     `;
   }
 
+  /**
+   * Render recent block
+   * @param attrs
+   * @returns
+   */
   private _recentBlock(attrs: AnyObj) {
     const all: RecentMark[] = Array.isArray(attrs?.recent) ? attrs.recent : [];
     if (!all.length) {
@@ -482,22 +512,25 @@ export class BakalariGradesAllCard extends LitElement {
       <div class="recent">
         <h4>Poslední známky</h4>
         ${repeat(
-          list,
-          (m) => m.id ?? `${m.subject_id}-${m.date}-${m.mark_text}`,
-          (m) => {
-            return html`
+      list,
+      (m) => m.id ?? `${m.subject_id}-${m.date}-${m.mark_text}`,
+      (m) => {
+        return html`
               <bka-recent-item
                 .mark=${m}
                 .showColors=${this._config.show_colors !== false}
                 .formatDate=${(iso: string) => this._fmtDate(iso)}
-              ></bka-recent-item>
+                ></bka-recent-item>
             `;
-          },
-        )}
-      </div>
+      },
+    )}
     `;
   }
 
+  /**
+   * Render main card
+   * @returns
+   */
   render() {
     const name = this._name();
     const entityId = this._config.entity;
@@ -516,26 +549,27 @@ export class BakalariGradesAllCard extends LitElement {
       >`;
     }
 
-    const attrs: AnyObj = stateObj.attributes ?? {};
-    const total = Number(attrs.total ?? 0);
+    const attrs: AnyObj = stateObj.attributes?.summary ?? {};
+    const total = Number(attrs.total_marks ?? 0);
     const newCount = Number(attrs.new_count ?? 0);
-    const numericCount = Number(attrs.numeric_count ?? 0);
-    const nonNumericCount = Number(attrs.non_numeric_count ?? 0);
-    const avg = this._safeNum(attrs.average, 3);
-    const wavg = this._safeNum(attrs.weighted_average, 3);
+    const numericCount = Number(attrs.total_non_point_marks ?? 0);
+    const nonNumericCount = Number(attrs.total_point_marks ?? 0);
+    const subjects_count = Number(attrs.subjects ?? 0);
+    const avg = this._safeNum(attrs.avg, 3);
+    const wavg = this._safeNum(attrs.wavg, 3);
     const icon = this._icon(attrs);
 
     if (this._autoExpandNew && !this._autoApplied) {
       this._applyAutoExpand(attrs);
     }
-    const subjects = this._config.show_subjects !== false ? this._subjectsBlock(attrs) : null;
+    const subjects = this._config.show_subjects !== false ? this._subjectsBlock() : null;
     const recent = this._config.show_recent !== false ? this._recentBlock(attrs) : null;
 
     return html`
       <ha-card .header=${name}>
         <div class="wrap">
           <div class="tools">
-            <button class="btn" @click=${() => this._expandAll(attrs)}>Rozbalit vše</button>
+            <button class="btn" @click=${() => this._expandAll()}>Rozbalit vše</button>
             <button class="btn" @click=${() => this._collapseAll()}>Sbalit vše</button>
             <label class="switch" title="Automaticky rozbalit předměty s novými známkami">
               <input
@@ -549,13 +583,14 @@ export class BakalariGradesAllCard extends LitElement {
           <div class="summary">
             <ha-icon class="icon" .icon=${icon}></ha-icon>
             <div class="summary-row">
+              <span class="chip"><span class="label">Předmětů</span><strong>${subjects_count}</strong></span>
               <span class="chip"><span class="label">Celkem</span> <strong>${total}</strong></span>
               <span class="chip"><span class="label">Ø</span> <strong>${avg}</strong></span>
               ${wavg !== "—"
-                ? html`<span class="chip"
+        ? html`<span class="chip"
                     ><span class="label">WØ</span> <strong>${wavg}</strong></span
                   >`
-                : null}
+        : null}
               <span class="chip"
                 ><span class="label">Číselné</span> <strong>${numericCount}</strong></span
               >
@@ -563,10 +598,10 @@ export class BakalariGradesAllCard extends LitElement {
                 ><span class="label">Nečíselné</span> <strong>${nonNumericCount}</strong></span
               >
               ${newCount > 0
-                ? html`<span class="chip attn" title="Nově přijaté"
+        ? html`<span class="chip attn" title="Nově přijaté"
                     ><span class="label">Nové</span> <strong>${newCount}</strong></span
                   >`
-                : null}
+        : null}
             </div>
           </div>
 
