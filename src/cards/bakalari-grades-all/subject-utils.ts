@@ -11,6 +11,7 @@ import type { HomeAssistant } from "custom-card-helpers"
 export type AnyObj = Record<string, any>;
 
 export interface SubjectSummary {
+  sensor_name?: string;
   subject_id?: string;
   subject_abbr?: string;
   subject_name?: string;
@@ -190,11 +191,18 @@ export function getSubjectInfoAndMarskFromSensor(hass: HomeAssistant, sensor_nam
   return { subject, marks }
 }
 
+/**
+ * Extract subject info from sensor
+ *
+ * @param sensor Sensor object
+ * @returns SubjectSummary object
+ */
 export function extractSubjectInfo(sensor: any): SubjectSummary {
   const attr = sensor["attributes"];
   const subj = attr["subject"] as Record<string, any>;
 
   const summary: SubjectSummary = {
+    sensor_name: sensor.entity_id,
     subject_id: subj["subject_id"],
     subject_name: subj["subject_name"],
     subject_abbr: subj["subject_abbr"],
@@ -209,6 +217,56 @@ export function extractSubjectInfo(sensor: any): SubjectSummary {
   }
 
   return summary;
+}
+
+/**
+ * Sort subject a return sorted SubjectSummary[]
+ * @param hass
+ * @param subjectList
+ * @param sortBy
+ * @param sortOrder
+ * @returns SubjectSummary[]
+ */
+export function sortSubjects(hass: any, subjectList: string[] | Set<string>, sortBy?: string, sortOrder?: string): SubjectSummary[] {
+
+  const by = String(sortBy || "name").toLowerCase();
+  const dir = String(sortOrder || "asc").toLowerCase();
+  const asc = dir === "asc";
+  const _subjectList = (subjectList instanceof Set) ? [...subjectList] : subjectList
+
+  const listOfSubjects: SubjectSummary[] = Object.values(_subjectList).map(subj =>
+    getSubjectInfoAndMarskFromSensor(hass, subj).subject
+  ).slice();
+
+  const byVal = (s: SubjectSummary): any => {
+    switch (by) {
+      case "abbr":
+        return abbr(s.subject_abbr).toLowerCase();
+      case "count":
+        return Number(s.count || 0);
+      case "avg":
+        return Number(s.avg ?? Number.POSITIVE_INFINITY);
+      case "wavg":
+        return Number(s.wavg || Number.POSITIVE_INFINITY);
+      case "last_date":
+        return new Date(s.last_date || 0).getTime();
+      case "name":
+      default:
+        subjectTitle(s).toLowerCase()
+    }
+  }
+
+  listOfSubjects
+    .sort((a, b) => {
+      const av = byVal(a);
+      const bv = byVal(b);
+
+      if (av < bv) return asc ? -1 : 1;
+      if (av > bv) return asc ? 1 : -1;
+      return 0;
+    })
+
+  return listOfSubjects
 }
 
 export function getRecentMarks(hass: any, sensorNames: string[], limit?: number): RecentMark[] {
