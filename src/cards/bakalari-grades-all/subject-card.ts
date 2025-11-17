@@ -46,7 +46,7 @@ export class BkaSubjectItem extends LitElement {
    */
   private _onToggle() {
     this.dispatchEvent(new CustomEvent("toggle-subject", {
-      detail: { key: this.subject },
+      detail: { key: this.subject.sensor_name },
       bubbles: true,
       composed: true
     }
