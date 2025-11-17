@@ -50,6 +50,7 @@ import "./bakalari-grades-all/recent-item";
 import {
   groupMarksBySubject,
   getSubjectsSensorNames,
+  getRecentMarks,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
 import { formatDateTime, safeNum as formatSafeNum } from "./shared/format";
@@ -291,8 +292,24 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _autoExpandNew: boolean = false;
   @state() private accessor _autoApplied: boolean = false;
   private _persist: any = null;
+  @state() private accessor _listOfSensorNames: string[] = []
 
   static styles = styles;
+
+  protected updated(changed: Map<string, unknown>) {
+    const hassChanged = changed.has("hass");
+    const configChanged = changed.has("_config");
+
+    if ((hassChanged || configChanged) && this.hass && this._config) {
+      const next = getSubjectsSensorNames(this.hass, this._config)
+      if (
+        next.length !== this._listOfSensorNames.length ||
+        next.some((s, i) => s !== this._listOfSensorNames[i])
+      ) {
+        this._listOfSensorNames = next;
+      }
+    }
+  }
 
   setConfig(config: Config) {
     if (!config || !config.entity) {
@@ -459,8 +476,7 @@ export class BakalariGradesAllCard extends LitElement {
    * @returns
    */
   private _subjectsBlock() {
-    const list: string[] = getSubjectsSensorNames(this.hass, this._config)
-    if (!list.length) {
+    if (!this._listOfSensorNames.length) {
       return html`<div class="empty">K předmětům nejsou data.</div>`;
     }
     return html`
@@ -468,7 +484,7 @@ export class BakalariGradesAllCard extends LitElement {
         <h4>Předměty</h4>
         <div class="grid">
           ${repeat(
-      list,
+      this._listOfSensorNames,
       (s) => {
         const open = this._openSubjects.has(s);
         return html`
@@ -493,26 +509,19 @@ export class BakalariGradesAllCard extends LitElement {
    * @param attrs
    * @returns
    */
-  private _recentBlock(attrs: AnyObj) {
-    const all: RecentMark[] = Array.isArray(attrs?.recent) ? attrs.recent : [];
-    if (!all.length) {
+  private _recentBlock() {
+
+    const limit = Math.max(0, Number(this._config.limit_recent ?? 12)) || 0;
+    const recent: RecentMark[] = getRecentMarks(this.hass, this._listOfSensorNames, limit)
+    if (!recent.length) {
       return html`<div class="empty">Žádné poslední známky.</div>`;
     }
-    const limit = Math.max(0, Number(this._config.limit_recent ?? 12)) || 0;
-    const list = all
-      .slice()
-      .sort((a, b) => {
-        const at = new Date(a.date || 0).getTime();
-        const bt = new Date(b.date || 0).getTime();
-        return bt - at;
-      })
-      .slice(0, limit || all.length);
 
     return html`
       <div class="recent">
         <h4>Poslední známky</h4>
         ${repeat(
-      list,
+      recent,
       (m) => m.id ?? `${m.subject_id}-${m.date}-${m.mark_text}`,
       (m) => {
         return html`
@@ -562,8 +571,10 @@ export class BakalariGradesAllCard extends LitElement {
     if (this._autoExpandNew && !this._autoApplied) {
       this._applyAutoExpand(attrs);
     }
+
     const subjects = this._config.show_subjects !== false ? this._subjectsBlock() : null;
-    const recent = this._config.show_recent !== false ? this._recentBlock(attrs) : null;
+    const recent = this._config.show_recent !== false ? this._recentBlock() : null;
+
 
     return html`
       <ha-card .header=${name}>
