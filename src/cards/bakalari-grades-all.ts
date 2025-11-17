@@ -82,6 +82,7 @@ export interface Config {
 
   // recent list
   limit_recent?: number;
+  recent_on_top: boolean;
 
   // subjects sorting/filtering
   sort_subjects_by?: "name" | "abbr" | "count" | "avg" | "wavg" | "last_date";
@@ -92,7 +93,6 @@ export interface Config {
   limit_subjects?: number;
 
   // marks source and limits
-  marks_attribute?: string; // which attributes key contains ALL marks (default: "recent", fallback: "all"|"marks")
   limit_subject_marks?: number; // limit of marks shown per subject (0 = no limit)
 
   // behavior
@@ -109,7 +109,6 @@ export interface Config {
  */
 @customElement(CARD_TYPE)
 export class BakalariGradesAllCard extends LitElement {
-
   // YAML Editor
   static getConfigForm() {
     return {
@@ -123,6 +122,7 @@ export class BakalariGradesAllCard extends LitElement {
           schema: [
             { name: "show_subjects", selector: { boolean: {} } },
             { name: "show_recent", selector: { boolean: {} } },
+            { name: "recent_on_top", selector: { boolean: {} } },
             { name: "show_colors", selector: { boolean: {} } },
             { name: "persist_open_subjects", selector: { boolean: {} } },
           ],
@@ -177,7 +177,6 @@ export class BakalariGradesAllCard extends LitElement {
             { name: "auto_expand_days", selector: { number: { min: 0 } } },
           ],
         },
-        { name: "marks_attribute", selector: { text: {} } },
         { name: "include_subject_ids", selector: { text: {} } },
         { name: "exclude_subject_ids", selector: { text: {} } },
       ],
@@ -195,6 +194,8 @@ export class BakalariGradesAllCard extends LitElement {
             return "Barevné zvýraznění známek";
           case "persist_open_subjects":
             return "Pamatovat rozbalené předměty";
+          case "recent_on_top":
+            return "Blok poslední známky nad Předměty";
           case "sort_subjects_by":
             return "Třídit předměty podle";
           case "sort_subjects_dir":
@@ -211,8 +212,6 @@ export class BakalariGradesAllCard extends LitElement {
             return "Auto-rozbalit předměty s novými známkami";
           case "auto_expand_days":
             return "Kolik dní zpět je 'nové'";
-          case "marks_attribute":
-            return "Atribut s VŠEMI známkami (např. recent)";
           case "include_subject_ids":
             return "Zahrnout jen ID předmětů (čárkami)";
           case "exclude_subject_ids":
@@ -244,6 +243,7 @@ export class BakalariGradesAllCard extends LitElement {
       // viditelnost bloků
       show_subjects: true,
       show_recent: true,
+      recent_on_top: false,
       // limit posledních známek
       limit_recent: 12,
       // třídění a filtrování předmětů
@@ -271,6 +271,7 @@ export class BakalariGradesAllCard extends LitElement {
     limit_recent: 12,
     show_subjects: true,
     show_recent: true,
+    recent_on_top: false,
     sort_subjects_by: "name",
     sort_subjects_dir: "asc",
     filter_subjects_min_count: 0,
@@ -278,7 +279,6 @@ export class BakalariGradesAllCard extends LitElement {
     exclude_subject_ids: [],
     limit_subjects: 0,
     // marks source and limits
-    marks_attribute: "recent",
     limit_subject_marks: 0,
     // behavior
     show_colors: true,
@@ -292,7 +292,7 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _autoExpandNew: boolean = false;
   @state() private accessor _autoApplied: boolean = false;
   private _persist: any = null;
-  @state() private accessor _listOfSensorNames: string[] = []
+  @state() private accessor _listOfSensorNames: string[] = [];
 
   static styles = styles;
 
@@ -301,7 +301,7 @@ export class BakalariGradesAllCard extends LitElement {
     const configChanged = changed.has("_config");
 
     if ((hassChanged || configChanged) && this.hass && this._config) {
-      const next = getSubjectsSensorNames(this.hass, this._config)
+      const next = getSubjectsSensorNames(this.hass, this._config);
       if (
         next.length !== this._listOfSensorNames.length ||
         next.some((s, i) => s !== this._listOfSensorNames[i])
@@ -325,8 +325,6 @@ export class BakalariGradesAllCard extends LitElement {
       include_subject_ids: [],
       exclude_subject_ids: [],
       limit_subjects: 0,
-      // marks source and limits
-      marks_attribute: "recent",
       limit_subject_marks: 0,
       // behavior
       show_colors: true,
@@ -418,7 +416,7 @@ export class BakalariGradesAllCard extends LitElement {
    * Open all subjects
    */
   private _expandAll() {
-    const list = getSubjectsSensorNames(this.hass, this._config)
+    const list = getSubjectsSensorNames(this.hass, this._config);
     this._updateOpenSubjects((subjs) => {
       for (const subj of list) {
         subjs.add(subj);
@@ -483,22 +481,20 @@ export class BakalariGradesAllCard extends LitElement {
       <div class="subjects">
         <h4>Předměty</h4>
         <div class="grid">
-          ${repeat(
-      this._listOfSensorNames,
-      (s) => {
-        const open = this._openSubjects.has(s);
-        return html`
-                <bka-subject-card-new
-                  .subjects=${s}
-                  .open=${open}
-                  .hass=${this.hass}
-                  .openKeys=${this._openSubjects}
-                  .showColors=${this._config.show_colors !== false}
-                  @toggle-subject=${(e: CustomEvent<{ key: string }>) => this._toggleSubject(e.detail.key, e)}
-                ></bka-subject-card-new>
-              `;
-      },
-    )}
+          ${repeat(this._listOfSensorNames, (s) => {
+      const open = this._openSubjects.has(s);
+      return html`
+              <bka-subject-card-new
+                .subjects=${s}
+                .open=${open}
+                .hass=${this.hass}
+                .openKeys=${this._openSubjects}
+                .showColors=${this._config.show_colors !== false}
+                @toggle-subject=${(e: CustomEvent<{ key: string }>) =>
+          this._toggleSubject(e.detail.key, e)}
+              ></bka-subject-card-new>
+            `;
+    })}
         </div>
       </div>
     `;
@@ -510,9 +506,8 @@ export class BakalariGradesAllCard extends LitElement {
    * @returns
    */
   private _recentBlock() {
-
     const limit = Math.max(0, Number(this._config.limit_recent ?? 12)) || 0;
-    const recent: RecentMark[] = getRecentMarks(this.hass, this._listOfSensorNames, limit)
+    const recent: RecentMark[] = getRecentMarks(this.hass, this._listOfSensorNames, limit);
     if (!recent.length) {
       return html`<div class="empty">Žádné poslední známky.</div>`;
     }
@@ -529,10 +524,11 @@ export class BakalariGradesAllCard extends LitElement {
                 .mark=${m}
                 .showColors=${this._config.show_colors !== false}
                 .formatDate=${(iso: string) => this._fmtDate(iso)}
-                ></bka-recent-item>
+              ></bka-recent-item>
             `;
       },
     )}
+      </div>
     `;
   }
 
@@ -575,6 +571,11 @@ export class BakalariGradesAllCard extends LitElement {
     const subjects = this._config.show_subjects !== false ? this._subjectsBlock() : null;
     const recent = this._config.show_recent !== false ? this._recentBlock() : null;
 
+    const sort_blok = () =>
+      this._config.recent_on_top
+        ? html`${recent}${subjects}`
+        : html`${subjects}${recent}`;
+
 
     return html`
       <ha-card .header=${name}>
@@ -594,7 +595,9 @@ export class BakalariGradesAllCard extends LitElement {
           <div class="summary">
             <ha-icon class="icon" .icon=${icon}></ha-icon>
             <div class="summary-row">
-              <span class="chip"><span class="label">Předmětů</span><strong>${subjects_count}</strong></span>
+              <span class="chip"
+                ><span class="label">Předmětů</span><strong>${subjects_count}</strong></span
+              >
               <span class="chip"><span class="label">Celkem</span> <strong>${total}</strong></span>
               <span class="chip"><span class="label">Ø</span> <strong>${avg}</strong></span>
               ${wavg !== "—"
@@ -616,7 +619,7 @@ export class BakalariGradesAllCard extends LitElement {
             </div>
           </div>
 
-          ${subjects} ${recent}
+          ${sort_blok()}
         </div>
       </ha-card>
     `;
