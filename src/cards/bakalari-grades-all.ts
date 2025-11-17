@@ -51,6 +51,7 @@ import {
   groupMarksBySubject,
   getSubjectsSensorNames,
   getRecentMarks,
+  sortSubjects,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
 import { formatDateTime, safeNum as formatSafeNum } from "./shared/format";
@@ -477,15 +478,20 @@ export class BakalariGradesAllCard extends LitElement {
     if (!this._listOfSensorNames.length) {
       return html`<div class="empty">K předmětům nejsou data.</div>`;
     }
+
+    const sortBy = this._config?.sort_subjects_by;
+    const sortOrder = this._config?.sort_subjects_dir;
+
+    const sortedList = sortSubjects(this.hass, this._listOfSensorNames, sortBy, sortOrder)
     return html`
       <div class="subjects">
         <h4>Předměty</h4>
         <div class="grid">
-          ${repeat(this._listOfSensorNames, (s) => {
-      const open = this._openSubjects.has(s);
+          ${repeat(sortedList, (s) => {
+      const open = this._openSubjects.has(s?.sensor_name ?? "");
       return html`
               <bka-subject-card-new
-                .subjects=${s}
+                .subject=${s}
                 .open=${open}
                 .hass=${this.hass}
                 .openKeys=${this._openSubjects}
