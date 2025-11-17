@@ -4,11 +4,23 @@ export default defineConfig({
   build: {
     lib: {
       entry: "src/main.ts",
-      name: "BakalariCards",
       formats: ["es"],
-      fileName: () => "bakalari-cards.js"
+      fileName: () => "bakalari-cards.js",
+    },
+    rollupOptions: {
+      output: {
+        inlineDynamicImports: true,
+        compact: true,
+      },
     },
     outDir: "dist",
-    sourcemap: true
-  }
+    sourcemap: true,
+    minify: "esbuild",
+    target: "es2020",
+  },
+  esbuild: {
+    minifyIdentifiers: true,
+    minifyWhitespace: true,
+    minifySyntax: true,
+  },
 });

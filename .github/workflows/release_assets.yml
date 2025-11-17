@@ -31,19 +31,14 @@ jobs:
           APP_VERSION: ${{ github.event.release.tag_name }}
         run: npm run build
 
-      - name: Make zip package
-        run: |
-          mkdir -p release
-          cp README.md LICENSE || true
-          zip -r "release/bakalari-ha-frontend-${{ github.event.release.tag_name }}.zip" dist README.md LICENSE 2>/dev/null || \
-          zip -r "release/bakalari-ha-frontend-${{ github.event.release.tag_name }}.zip" dist
+      - name: Remove source maps from build
+        run: find dist -name '*.map' -delete
 
       - name: Upload assets to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/**
-            release/*.zip
           tag_name: ${{ github.event.release.tag_name }}
           fail_on_unmatched_files: true
           overwrite_files: true
