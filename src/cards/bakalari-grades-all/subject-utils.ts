@@ -167,7 +167,13 @@ export function getSubjectsSensorNames(hass: HomeAssistant, config: Config) {
 
   return Object.values(sensorMap as Record<string, string>)
 }
-
+/**
+ * Retrieve Subject Info and Marks from the sensor
+ *
+ * @param hass
+ * @param sensor_name
+ * @returns subject info, Marks for Suject
+ */
 export function getSubjectInfoAndMarskFromSensor(hass: HomeAssistant, sensor_name: string): {
   subject: SubjectSummary;
   marks: RecentMark[];
@@ -204,6 +210,25 @@ export function extractSubjectInfo(sensor: any): SubjectSummary {
 
   return summary;
 }
+
+export function getRecentMarks(hass: any, sensorNames: string[], limit?: number): RecentMark[] {
+
+  const all: RecentMark[] = sensorNames
+    .map(s => getSubjectInfoAndMarskFromSensor(hass, s).marks)
+    .flat();
+
+  const recent: RecentMark[] = all
+    .slice()
+    .sort((a, b) => {
+      const at = new Date(a.date || 0).getTime();
+      const bt = new Date(b.date || 0).getTime();
+      return bt - at;
+    })
+    .slice(0, limit || all.length)
+
+  return recent
+}
+
 
 export function extractSubjects(attrs: AnyObj): SubjectSummary[] {
   const list: any = Array.isArray(attrs?.by_subject) ? attrs.by_subject : [];
