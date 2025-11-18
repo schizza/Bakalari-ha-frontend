@@ -12,6 +12,11 @@ ha-card {
   overflow: hidden;
 }
 
+.icon {
+  widht: 15px;
+  height: 15px;
+}
+
 .wrap {
   padding: 12px 16px 16px;
   display: flex;

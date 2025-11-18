@@ -141,8 +141,6 @@ export class BakalariGradesAllCard extends LitElement {
       sort_subjects_by: "name",
       sort_subjects_dir: "asc",
       filter_subjects_min_count: 0,
-      include_subject_ids: "",
-      exclude_subject_ids: "",
       include_subject_sensors: [],
       exclude_subject_sensors: [],
       limit_subjects: 0,
@@ -243,21 +241,6 @@ export class BakalariGradesAllCard extends LitElement {
     }
     this._autoExpandNew = this._persist.loadBool("auto_expand_new", !!this._config.auto_expand_new);
     this._autoApplied = false;
-
-    // TODO: Create new include / exclude configuration item, as we don`t track subjects by it`s ID
-    //
-    //   const toList = (v: any) => {
-    //     if (Array.isArray(v)) return v.map((x) => String(x));
-    //     if (typeof v === "string")
-    //       return v
-    //         .split(/[,\n]/)
-    //         .map((s) => s.trim())
-    //         .filter(Boolean);
-    //     return [];
-    //   };
-    //   // keep original if already array or convert string -> array
-    //   (this._config as any).include_subject_ids = toList(this._config.include_subject_ids);
-    //   (this._config as any).exclude_subject_ids = toList(this._config.exclude_subject_ids);
   }
 
   private _name(): string {
