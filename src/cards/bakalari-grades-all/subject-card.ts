@@ -22,7 +22,7 @@ import { customElement, property } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { repeat } from "lit/directives/repeat.js";
 import { gradeClass } from "./grade-utils";
-import { type RecentMark, SubjectSummary, getSubjectInfoAndMarskFromSensor } from "./subject-utils";
+import { type RecentMark, SubjectSummary, getSubjectInfoAndMarskFromSensor, shortenMark } from "./subject-utils";
 import { formatDateTime } from "../shared/format";
 
 /**
@@ -84,7 +84,7 @@ export class BkaSubjectItem extends LitElement {
       (m) => `${m.id}-${m.date}-${m.mark_text}`,
       (m) => html`
                         <div class="mrow">
-                          <div class=${'m mark ' + gradeClass((m.mark_text || '').trim(), this.showColors)}>${(m.mark_text || '').trim() || '—'}</div>
+                          <div class=${'m mark ' + gradeClass((m.mark_text || '').trim(), this.showColors)} title="${m.mark_text}">${(shortenMark(m.mark_text) || '').trim() || '—'}</div>
                           <div class="mtitle" title="${m.theme}">${m.theme}</div>
                           <div class="mdate">${this.formatDate(m.date)}</div>
                           <div class="mtheme">

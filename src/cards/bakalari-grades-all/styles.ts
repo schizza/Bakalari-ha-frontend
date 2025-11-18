@@ -1,14 +1,10 @@
-import {
-  css
-}
-
-from "lit";
+import { css } from "lit";
 
 /**
  * Styles for Bakaláři – Všechny známky card.
  * Extracted into a separate module. Includes color classes for grade buckets.
  */
-export const styles=css` :host {
+export const styles = css` :host {
   display: block;
 }
 
@@ -427,7 +423,6 @@ ha-card {
 .error {
   color: var(--error-color, #c62828);
 }
-
 `;
 
 export default styles;

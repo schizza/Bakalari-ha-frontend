@@ -98,6 +98,28 @@ export function subjectKeyFromMark(m: RecentMark): string {
 
 /* --------------------------------- Marks --------------------------------- */
 
+function isNumber(str: string): boolean {
+  if (typeof str !== "string") return false
+
+  const s = str.trim()
+
+  if (str === "") return false
+  const normalized = s.replace(",", ".");
+  const n = Number(normalized);
+
+  return Number.isFinite(n)
+}
+export function shortenMark(str: string | undefined): string {
+
+  if (str === undefined) return "-"
+
+  if (isNumber(str)) {
+    return str
+  }
+  if (str.length > 3) return str[0].toLocaleUpperCase()
+
+  return str;
+}
 /**
  * Extrahuje známky z předaného objektu (objekt musí obsahovat pole "recent")
  * @param attrs
