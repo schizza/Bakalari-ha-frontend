@@ -50,9 +50,11 @@ import "./bakalari-grades-all/recent-item";
 import {
   groupMarksBySubject,
   getSubjectsSensorNames,
+  getRecentMarks,
+  sortSubjects,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
-import { formatDateTime, safeNum as formatSafeNum } from "./shared/format";
+import { formatDateOnly, safeNum as formatSafeNum } from "./shared/format";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 
@@ -81,17 +83,18 @@ export interface Config {
 
   // recent list
   limit_recent?: number;
+  recent_on_top: boolean;
+  reflect_subjects_in_recent?: boolean;
 
   // subjects sorting/filtering
   sort_subjects_by?: "name" | "abbr" | "count" | "avg" | "wavg" | "last_date";
   sort_subjects_dir?: "asc" | "desc";
   filter_subjects_min_count?: number;
-  include_subject_ids?: string[]; // normalized by trim()
-  exclude_subject_ids?: string[];
+  include_subject_sensors?: string[];
+  exclude_subject_sensors?: string[];
   limit_subjects?: number;
 
   // marks source and limits
-  marks_attribute?: string; // which attributes key contains ALL marks (default: "recent", fallback: "all"|"marks")
   limit_subject_marks?: number; // limit of marks shown per subject (0 = no limit)
 
   // behavior
@@ -108,131 +111,18 @@ export interface Config {
  */
 @customElement(CARD_TYPE)
 export class BakalariGradesAllCard extends LitElement {
-
   // YAML Editor
   static getConfigForm() {
     return {
-      schema: [
-        { name: "label", selector: { label: {} } },
-        { name: "entity", required: true, selector: { entity: {} } },
-        { name: "name", selector: { text: {} } },
-        {
-          type: "grid",
-          name: "",
-          schema: [
-            { name: "show_subjects", selector: { boolean: {} } },
-            { name: "show_recent", selector: { boolean: {} } },
-            { name: "show_colors", selector: { boolean: {} } },
-            { name: "persist_open_subjects", selector: { boolean: {} } },
-          ],
-        },
-        {
-          type: "grid",
-          name: "",
-          schema: [
-            {
-              name: "sort_subjects_by",
-              selector: {
-                select: {
-                  options: [
-                    { value: "name", label: "Název" },
-                    { value: "abbr", label: "Zkratka" },
-                    { value: "count", label: "Počet známek" },
-                    { value: "avg", label: "Průměr" },
-                    { value: "wavg", label: "Vážený průměr" },
-                    { value: "last_date", label: "Poslední datum" },
-                  ],
-                },
-              },
-            },
-            {
-              name: "sort_subjects_dir",
-              selector: {
-                select: {
-                  options: [
-                    { value: "asc", label: "Vzestupně" },
-                    { value: "desc", label: "Sestupně" },
-                  ],
-                },
-              },
-            },
-            { name: "filter_subjects_min_count", selector: { number: { min: 0 } } },
-            { name: "limit_subjects", selector: { number: { min: 0 } } },
-          ],
-        },
-        {
-          type: "grid",
-          name: "",
-          schema: [
-            { name: "limit_recent", selector: { number: { min: 0 } } },
-            { name: "limit_subject_marks", selector: { number: { min: 0 } } },
-          ],
-        },
-        {
-          type: "grid",
-          name: "",
-          schema: [
-            { name: "auto_expand_new", selector: { boolean: {} } },
-            { name: "auto_expand_days", selector: { number: { min: 0 } } },
-          ],
-        },
-        { name: "marks_attribute", selector: { text: {} } },
-        { name: "include_subject_ids", selector: { text: {} } },
-        { name: "exclude_subject_ids", selector: { text: {} } },
-      ],
-      computeLabel: (schema: any) => {
-        switch (schema.name) {
-          case "entity":
-            return "Entita";
-          case "name":
-            return "Titulek";
-          case "show_subjects":
-            return "Zobrazit blok Předměty";
-          case "show_recent":
-            return "Zobrazit blok Poslední známky";
-          case "show_colors":
-            return "Barevné zvýraznění známek";
-          case "persist_open_subjects":
-            return "Pamatovat rozbalené předměty";
-          case "sort_subjects_by":
-            return "Třídit předměty podle";
-          case "sort_subjects_dir":
-            return "Směr třídění";
-          case "filter_subjects_min_count":
-            return "Min. počet známek (filtr)";
-          case "limit_subjects":
-            return "Limit počtu předmětů (0 = bez limitu)";
-          case "limit_recent":
-            return "Limit posledních známek (0 = bez limitu)";
-          case "limit_subject_marks":
-            return "Limit známek v předmětu (0 = bez limitu)";
-          case "auto_expand_new":
-            return "Auto-rozbalit předměty s novými známkami";
-          case "auto_expand_days":
-            return "Kolik dní zpět je 'nové'";
-          case "marks_attribute":
-            return "Atribut s VŠEMI známkami (např. recent)";
-          case "include_subject_ids":
-            return "Zahrnout jen ID předmětů (čárkami)";
-          case "exclude_subject_ids":
-            return "Vynechat ID předmětů (čárkami)";
-        }
-        return undefined;
-      },
-      computeHelper: (schema: any) => {
-        switch (schema.name) {
-          case "include_subject_ids":
-          case "exclude_subject_ids":
-            return "Zadej seznam ID oddělený čárkou, např.: 10,  2, 1N";
-          case "marks_attribute":
-            return "Ve výchozím stavu se použije recent (senzor obsahuje všechny známky).";
-        }
-        return undefined;
-      },
       assertConfig: (config: any) => {
         if (!config?.entity) throw new Error("Název entity je vyžadován");
-      },
-    };
+      }
+    }
+  }
+
+  static async getConfigElement() {
+    await import("./bakalari-grades-all/editor");
+    return document.createElement("bakalari-grades-all-editor");
   }
 
   // Default config on card creation
@@ -243,14 +133,16 @@ export class BakalariGradesAllCard extends LitElement {
       // viditelnost bloků
       show_subjects: true,
       show_recent: true,
+      recent_on_top: false,
       // limit posledních známek
       limit_recent: 12,
+      reflect_subjects_in_recent: false,
       // třídění a filtrování předmětů
       sort_subjects_by: "name",
       sort_subjects_dir: "asc",
       filter_subjects_min_count: 0,
-      include_subject_ids: "",
-      exclude_subject_ids: "",
+      include_subject_sensors: [],
+      exclude_subject_sensors: [],
       limit_subjects: 0,
       // zdroj a limity známek
       marks_attribute: "recent",
@@ -268,16 +160,17 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _config: Config = {
     entity: "",
     limit_recent: 12,
+    reflect_subjects_in_recent: false,
     show_subjects: true,
     show_recent: true,
+    recent_on_top: false,
     sort_subjects_by: "name",
     sort_subjects_dir: "asc",
     filter_subjects_min_count: 0,
-    include_subject_ids: [],
-    exclude_subject_ids: [],
+    include_subject_sensors: [],
+    exclude_subject_sensors: [],
     limit_subjects: 0,
     // marks source and limits
-    marks_attribute: "recent",
     limit_subject_marks: 0,
     // behavior
     show_colors: true,
@@ -291,8 +184,28 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _autoExpandNew: boolean = false;
   @state() private accessor _autoApplied: boolean = false;
   private _persist: any = null;
+  @state() private accessor _listOfSensorNames: string[] = [];
 
   static styles = styles;
+
+  protected updated(changed: Map<string, unknown>) {
+    const hassChanged = changed.has("hass");
+    const configChanged = changed.has("_config");
+
+    if ((hassChanged || configChanged) && this.hass && this._config) {
+      let next = getSubjectsSensorNames(this.hass, this._config);
+      const inc = this._config.include_subject_sensors || [];
+      const exc = this._config.exclude_subject_sensors || [];
+      if (inc.length) next = next.filter((s) => inc.includes(s));
+      if (exc.length) next = next.filter((s) => !exc.includes(s));
+      if (
+        next.length !== this._listOfSensorNames.length ||
+        next.some((s, i) => s !== this._listOfSensorNames[i])
+      ) {
+        this._listOfSensorNames = next;
+      }
+    }
+  }
 
   setConfig(config: Config) {
     if (!config || !config.entity) {
@@ -300,16 +213,15 @@ export class BakalariGradesAllCard extends LitElement {
     }
     this._config = {
       limit_recent: 12,
+      reflect_subjects_in_recent: false,
       show_subjects: true,
       show_recent: true,
       sort_subjects_by: "name",
       sort_subjects_dir: "asc",
       filter_subjects_min_count: 0,
-      include_subject_ids: [],
-      exclude_subject_ids: [],
+      include_subject_sensors: [],
+      exclude_subject_sensors: [],
       limit_subjects: 0,
-      // marks source and limits
-      marks_attribute: "recent",
       limit_subject_marks: 0,
       // behavior
       show_colors: true,
@@ -329,21 +241,6 @@ export class BakalariGradesAllCard extends LitElement {
     }
     this._autoExpandNew = this._persist.loadBool("auto_expand_new", !!this._config.auto_expand_new);
     this._autoApplied = false;
-
-    // TODO: Create new include / exclude configuration item, as we don`t track subjects by it`s ID
-    //
-    //   const toList = (v: any) => {
-    //     if (Array.isArray(v)) return v.map((x) => String(x));
-    //     if (typeof v === "string")
-    //       return v
-    //         .split(/[,\n]/)
-    //         .map((s) => s.trim())
-    //         .filter(Boolean);
-    //     return [];
-    //   };
-    //   // keep original if already array or convert string -> array
-    //   (this._config as any).include_subject_ids = toList(this._config.include_subject_ids);
-    //   (this._config as any).exclude_subject_ids = toList(this._config.exclude_subject_ids);
   }
 
   private _name(): string {
@@ -356,7 +253,7 @@ export class BakalariGradesAllCard extends LitElement {
 
   private _fmtDate(iso?: string): string {
     const locale = this.hass?.locale?.language || undefined;
-    return formatDateTime(iso, { locale });
+    return formatDateOnly(iso, { locale });
   }
 
   // private _gradeNumber(txt?: string): number | null {
@@ -401,7 +298,7 @@ export class BakalariGradesAllCard extends LitElement {
    * Open all subjects
    */
   private _expandAll() {
-    const list = getSubjectsSensorNames(this.hass, this._config)
+    const list = getSubjectsSensorNames(this.hass, this._config);
     this._updateOpenSubjects((subjs) => {
       for (const subj of list) {
         subjs.add(subj);
@@ -459,30 +356,32 @@ export class BakalariGradesAllCard extends LitElement {
    * @returns
    */
   private _subjectsBlock() {
-    const list: string[] = getSubjectsSensorNames(this.hass, this._config)
-    if (!list.length) {
+    if (!this._listOfSensorNames.length) {
       return html`<div class="empty">K předmětům nejsou data.</div>`;
     }
+
+    const sortBy = this._config?.sort_subjects_by;
+    const sortOrder = this._config?.sort_subjects_dir;
+
+    const sortedList = sortSubjects(this.hass, this._listOfSensorNames, sortBy, sortOrder)
     return html`
       <div class="subjects">
         <h4>Předměty</h4>
         <div class="grid">
-          ${repeat(
-      list,
-      (s) => {
-        const open = this._openSubjects.has(s);
-        return html`
-                <bka-subject-card-new
-                  .subjects=${s}
-                  .open=${open}
-                  .hass=${this.hass}
-                  .openKeys=${this._openSubjects}
-                  .showColors=${this._config.show_colors !== false}
-                  @toggle-subject=${(e: CustomEvent<{ key: string }>) => this._toggleSubject(e.detail.key, e)}
-                ></bka-subject-card-new>
-              `;
-      },
-    )}
+          ${repeat(sortedList, (s) => {
+      const open = this._openSubjects.has(s?.sensor_name ?? "");
+      return html`
+              <bka-subject-card-new
+                .subject=${s}
+                .open=${open}
+                .hass=${this.hass}
+                .openKeys=${this._openSubjects}
+                .showColors=${this._config.show_colors !== false}
+                @toggle-subject=${(e: CustomEvent<{ key: string }>) =>
+          this._toggleSubject(e.detail.key, e)}
+              ></bka-subject-card-new>
+            `;
+    })}
         </div>
       </div>
     `;
@@ -493,37 +392,32 @@ export class BakalariGradesAllCard extends LitElement {
    * @param attrs
    * @returns
    */
-  private _recentBlock(attrs: AnyObj) {
-    const all: RecentMark[] = Array.isArray(attrs?.recent) ? attrs.recent : [];
-    if (!all.length) {
+  private _recentBlock() {
+    const limit = Math.max(0, Number(this._config.limit_recent ?? 12)) || 0;
+    const useSelected = !!this._config.reflect_subjects_in_recent;
+    const sensors = useSelected ? this._listOfSensorNames : getSubjectsSensorNames(this.hass, this._config);
+    const recent: RecentMark[] = getRecentMarks(this.hass, sensors, limit);
+    if (!recent.length) {
       return html`<div class="empty">Žádné poslední známky.</div>`;
     }
-    const limit = Math.max(0, Number(this._config.limit_recent ?? 12)) || 0;
-    const list = all
-      .slice()
-      .sort((a, b) => {
-        const at = new Date(a.date || 0).getTime();
-        const bt = new Date(b.date || 0).getTime();
-        return bt - at;
-      })
-      .slice(0, limit || all.length);
 
     return html`
       <div class="recent">
         <h4>Poslední známky</h4>
         ${repeat(
-      list,
-      (m) => m.id ?? `${m.subject_id}-${m.date}-${m.mark_text}`,
+      recent,
+      //      (m) => m.id ?? `${m.subject_id}-${m.date}-${m.mark_text}`,
       (m) => {
         return html`
-              <bka-recent-item
+            <bka-recent-item
                 .mark=${m}
                 .showColors=${this._config.show_colors !== false}
-                .formatDate=${(iso: string) => this._fmtDate(iso)}
-                ></bka-recent-item>
+                .formatDate=${(iso: string) => formatDateOnly(iso, { locale: this.hass?.locale?.language || undefined })}
+              ></bka-recent-item>
             `;
       },
     )}
+      </div>
     `;
   }
 
@@ -562,8 +456,15 @@ export class BakalariGradesAllCard extends LitElement {
     if (this._autoExpandNew && !this._autoApplied) {
       this._applyAutoExpand(attrs);
     }
+
     const subjects = this._config.show_subjects !== false ? this._subjectsBlock() : null;
-    const recent = this._config.show_recent !== false ? this._recentBlock(attrs) : null;
+    const recent = this._config.show_recent !== false ? this._recentBlock() : null;
+
+    const sort_blok = () =>
+      this._config.recent_on_top
+        ? html`${recent}${subjects}`
+        : html`${subjects}${recent}`;
+
 
     return html`
       <ha-card .header=${name}>
@@ -583,7 +484,9 @@ export class BakalariGradesAllCard extends LitElement {
           <div class="summary">
             <ha-icon class="icon" .icon=${icon}></ha-icon>
             <div class="summary-row">
-              <span class="chip"><span class="label">Předmětů</span><strong>${subjects_count}</strong></span>
+              <span class="chip"
+                ><span class="label">Předmětů</span><strong>${subjects_count}</strong></span
+              >
               <span class="chip"><span class="label">Celkem</span> <strong>${total}</strong></span>
               <span class="chip"><span class="label">Ø</span> <strong>${avg}</strong></span>
               ${wavg !== "—"
@@ -605,7 +508,7 @@ export class BakalariGradesAllCard extends LitElement {
             </div>
           </div>
 
-          ${subjects} ${recent}
+          ${sort_blok()}
         </div>
       </ha-card>
     `;

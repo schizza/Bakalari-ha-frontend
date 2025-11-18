@@ -2,7 +2,8 @@ import { LitElement, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { gradeClass } from "./grade-utils";
 import { abbr, type RecentMark } from "./subject-utils";
-import { formatDateTime } from "../shared/format";
+import { formatDateOnly } from "../shared/format";
+import { EyeIcon, EyeOffIcon } from "./icons";
 
 /**
  * bka-recent-item
@@ -24,12 +25,7 @@ export class BkaRecentItem extends LitElement {
 
   @property({ attribute: false }) accessor mark!: RecentMark;
   @property({ attribute: false }) accessor showColors: boolean = true;
-
-  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (
-    iso?: string,
-  ) => {
-    return formatDateTime(iso);
-  };
+  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateOnly(iso);
 
   render() {
     const m = this.mark;
@@ -39,18 +35,17 @@ export class BkaRecentItem extends LitElement {
     const theme = (m.theme || "").trim();
     const caption = (m.caption || "").trim();
     const markText = (m.mark_text || "").trim();
-    const date = this.formatDate(m.date);
 
     return html`
       <div class="item">
         <div class=${"mark " + gradeClass(markText, this.showColors)}>${markText || "—"}</div>
         <div class="title">${subj}</div>
-        <div class="date">${date}</div>
-        <div class="theme">
-          ${caption ? html`<span class="badge" title="Typ">${caption}</span>` : null}
-          <span class="t">${theme || "—"}</span>
-        </div>
-      </div>
+        <div class="date">${this.formatDate(m.date)} <span class="t" title=${m.is_new ? "Nepodepsáno" : "Podepsáno"}> ${m.is_new ? EyeOffIcon("icon") : EyeIcon("icon")} </span></div >
+  <div class="theme" >
+    ${caption ? html`<span class="badge" title="Typ">${caption}</span>` : null}
+<span class="t" > ${theme || "—"} </span>
+  </div>
+  </div>
     `;
   }
 }

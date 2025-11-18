@@ -11,6 +11,7 @@ import type { HomeAssistant } from "custom-card-helpers"
 export type AnyObj = Record<string, any>;
 
 export interface SubjectSummary {
+  sensor_name?: string;
   subject_id?: string;
   subject_abbr?: string;
   subject_name?: string;
@@ -61,8 +62,6 @@ export interface ConfigForSubjects {
   sort_subjects_by?: "name" | "abbr" | "count" | "avg" | "wavg" | "last_date";
   sort_subjects_dir?: "asc" | "desc";
   filter_subjects_min_count?: number;
-  include_subject_ids?: string[];
-  exclude_subject_ids?: string[];
   limit_subjects?: number;
 
   // marks source
@@ -97,6 +96,28 @@ export function subjectKeyFromMark(m: RecentMark): string {
 
 /* --------------------------------- Marks --------------------------------- */
 
+function isNumber(str: string): boolean {
+  if (typeof str !== "string") return false
+
+  const s = str.trim()
+
+  if (s === "") return false
+  const normalized = s.replace(",", ".");
+  const n = Number(normalized);
+
+  return Number.isFinite(n)
+}
+export function shortenMark(str: string | undefined): string {
+
+  if (str === undefined) return "-"
+
+  if (isNumber(str)) {
+    return str
+  }
+  if (str.length > 3) return str[0].toLocaleUpperCase()
+
+  return str;
+}
 /**
  * Extrahuje známky z předaného objektu (objekt musí obsahovat pole "recent")
  * @param attrs
@@ -167,7 +188,13 @@ export function getSubjectsSensorNames(hass: HomeAssistant, config: Config) {
 
   return Object.values(sensorMap as Record<string, string>)
 }
-
+/**
+ * Retrieve Subject Info and Marks from the sensor
+ *
+ * @param hass
+ * @param sensor_name
+ * @returns subject info, Marks for Suject
+ */
 export function getSubjectInfoAndMarskFromSensor(hass: HomeAssistant, sensor_name: string): {
   subject: SubjectSummary;
   marks: RecentMark[];
@@ -184,11 +211,36 @@ export function getSubjectInfoAndMarskFromSensor(hass: HomeAssistant, sensor_nam
   return { subject, marks }
 }
 
+/**
+ * Extract subject info from sensor
+ *
+ * @param sensor Sensor object
+ * @returns SubjectSummary object
+ */
 export function extractSubjectInfo(sensor: any): SubjectSummary {
   const attr = sensor["attributes"];
   const subj = attr["subject"] as Record<string, any>;
 
+  if (!subj || !subj.subject_id) {
+    const sum: SubjectSummary = {
+      sensor_name: sensor.entity_id,
+      subject_id: "",
+      subject_name: "Neznámý předmět",
+      subject_abbr: "",
+      count: 0,
+      new_count: 0,
+      numeric_count: 0,
+      non_numeric_count: 0,
+      last_date: "",
+      last_text: "",
+      avg: 0,
+      wavg: 0
+    }
+    return sum;
+  }
+
   const summary: SubjectSummary = {
+    sensor_name: sensor.entity_id,
     subject_id: subj["subject_id"],
     subject_name: subj["subject_name"],
     subject_abbr: subj["subject_abbr"],
@@ -205,44 +257,26 @@ export function extractSubjectInfo(sensor: any): SubjectSummary {
   return summary;
 }
 
-export function extractSubjects(attrs: AnyObj): SubjectSummary[] {
-  const list: any = Array.isArray(attrs?.by_subject) ? attrs.by_subject : [];
-  return (list as SubjectSummary[]).slice();
-}
+/**
+ * Sort subject a return sorted SubjectSummary[]
+ * @param hass
+ * @param subjectList
+ * @param sortBy
+ * @param sortOrder
+ * @returns SubjectSummary[]
+ */
+export function sortSubjects(hass: any, subjectList: string[] | Set<string>, sortBy?: string, sortOrder?: string): SubjectSummary[] {
 
-export function filteredSortedSubjectsFromAttrs(
-  attrs: AnyObj,
-  cfg: ConfigForSubjects,
-): SubjectSummary[] {
-  return filteredSortedSubjects(extractSubjects(attrs), cfg);
-}
-
-export function filteredSortedSubjects(
-  subjects: SubjectSummary[],
-  cfg: ConfigForSubjects,
-): SubjectSummary[] {
-  let list: SubjectSummary[] = Array.isArray(subjects) ? subjects.slice() : [];
-  if (!list.length) return [];
-
-  const minCount = Math.max(0, Number(cfg.filter_subjects_min_count || 0));
-  const include = (cfg.include_subject_ids || []).map((s) => normalizeId(String(s)));
-  const exclude = (cfg.exclude_subject_ids || []).map((s) => normalizeId(String(s)));
-
-  list = list.filter((s) => {
-    const key = subjectKeyFromSummary(s);
-    if (!key) return false;
-    const candidate = normalizeId(String(s.subject_id || key));
-    if (include.length && !include.includes(candidate)) return false;
-    if (exclude.length && exclude.includes(candidate)) return false;
-    if (Number(s.count || 0) < minCount) return false;
-    return true;
-  });
-
-  const by = String(
-    cfg.sort_subjects_by || "name",
-  ).toLowerCase() as ConfigForSubjects["sort_subjects_by"];
-  const dir = String(cfg.sort_subjects_dir || "asc").toLowerCase();
+  const by = String(sortBy || "name").toLowerCase();
+  const dir = String(sortOrder || "asc").toLowerCase();
   const asc = dir === "asc";
+  const _subjectList = (subjectList instanceof Set) ? [...subjectList] : subjectList
+
+  const listOfSubjects: SubjectSummary[] = Object.values(_subjectList).map(subj =>
+    getSubjectInfoAndMarskFromSensor(hass, subj).subject
+  ).slice();
+
+  const coll = new Intl.Collator("cs", { sensitivity: "base", numeric: false });
 
   const byVal = (s: SubjectSummary): any => {
     switch (by) {
@@ -251,29 +285,55 @@ export function filteredSortedSubjects(
       case "count":
         return Number(s.count || 0);
       case "avg":
-        // keep undefined as +Infinity so they end last in asc; note: they end first in desc
         return Number(s.avg ?? Number.POSITIVE_INFINITY);
       case "wavg":
-        return Number(s.wavg ?? Number.POSITIVE_INFINITY);
+        return Number(s.wavg || Number.POSITIVE_INFINITY);
       case "last_date":
         return new Date(s.last_date || 0).getTime();
       case "name":
+        return subjectTitle(s);
       default:
-        return subjectTitle(s).toLowerCase();
+        return subjectTitle(s);
     }
-  };
+  }
 
-  list.sort((a, b) => {
-    const av = byVal(a);
-    const bv = byVal(b);
-    if (av < bv) return -1;
-    if (av > bv) return 1;
-    return 0;
-  });
-  if (!asc) list.reverse();
+  listOfSubjects
+    .sort((a, b) => {
+      const av = byVal(a);
+      const bv = byVal(b);
 
-  const lim = Math.max(0, Number(cfg.limit_subjects || 0));
-  if (lim > 0) list = list.slice(0, lim);
+      let res: number;
+      if (typeof av === "string" && typeof bv === "string") {
+        res = coll.compare(av, bv);
+      } else {
+        res = av < bv ? -1 : av > bv ? 1 : 0;
+      }
+      return asc ? res : -res;
+    })
 
-  return list;
+  return listOfSubjects
+}
+
+export function getRecentMarks(hass: any, sensorNames: string[], limit?: number): RecentMark[] {
+
+  const all: RecentMark[] = sensorNames
+    .map(s => getSubjectInfoAndMarskFromSensor(hass, s).marks)
+    .flat();
+
+  const recent: RecentMark[] = all
+    .slice()
+    .sort((a, b) => {
+      const at = new Date(a.date || 0).getTime();
+      const bt = new Date(b.date || 0).getTime();
+      return bt - at;
+    })
+    .slice(0, limit || all.length)
+
+  return recent
+}
+
+
+export function extractSubjects(attrs: AnyObj): SubjectSummary[] {
+  const list: any = Array.isArray(attrs?.by_subject) ? attrs.by_subject : [];
+  return (list as SubjectSummary[]).slice();
 }

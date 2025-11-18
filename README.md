@@ -155,13 +155,37 @@ příklad použití v `yaml editoru`:
     sort_subjects_dir: asc       # asc|desc
 
     filter_subjects_min_count: 0
-    include_subject_ids: []      # např.: ["10"," 2","1N"]
-    exclude_subject_ids: []
+    include_subject_sensors: []      # plné názevy senzorů k filtraci
+    exclude_subject_sensors: []
     limit_subjects: 0            # 0 = bez limitu
     # barvy a perzistence
     show_colors: true
     persist_open_subjects: true
   ```
+
+```yaml
+type: custom:bakalari-grades-all
+name: Známky - superdítě
+entity: sensor.bakalari_superdite_vsechny_znamky
+show_subjects: true   # zobrazit pole Předměty
+show_recent: true     # zobrazit pole Poslední známky
+limit_recent: 5       # kolik posledních známke se má zobrazit
+sort_subjects_dir: asc # asc/desc
+filter_subjects_min_count: 0  # minimální počet známek, aby se předmět zobrazil
+limit_subject_marks: 0
+show_colors: true  # zorazí podbarvení známek
+persist_open_subjects: true # pamatuje si naposledy otevřené předměty
+auto_expand_new: false  # otevírat předměty s novými známkami
+auto_expand_days: 3  # kolik dní zpět je "nové"
+
+recent_on_top: false
+include_subject_sensors:
+  - sensor.bakalari_superdite_znamky_aj
+  - sensor.bakalari_suúerdite_znamky_cj
+exclude_subject_sensors:
+reflect_subjects_in_recent: false  # refletovat filtr pro předměty i na poslední známky?
+sort_subjects_by: name   # name | abbr | avg | wavg | count | last_date
+```
 
 - Screenshot:
 ![Známky](https://github.com/schizza/Bakalari-ha-frontend/blob/main/docs/znamky.png)

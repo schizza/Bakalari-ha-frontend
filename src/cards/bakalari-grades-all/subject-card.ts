@@ -22,8 +22,9 @@ import { customElement, property } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { repeat } from "lit/directives/repeat.js";
 import { gradeClass } from "./grade-utils";
-import { type RecentMark, getSubjectInfoAndMarskFromSensor } from "./subject-utils";
-import { formatDateTime } from "../shared/format";
+import { type RecentMark, SubjectSummary, getSubjectInfoAndMarskFromSensor, shortenMark } from "./subject-utils";
+import { formatDateOnly } from "../shared/format";
+import { EyeIcon, EyeOffIcon } from "./icons";
 
 /**
  * Komponenta pro předmět v Bakaláři.
@@ -34,10 +35,10 @@ export class BkaSubjectItem extends LitElement {
     return this;
   }
 
-  @property({ attribute: false }) accessor subject!: string;
+  @property({ attribute: false }) accessor subject!: SubjectSummary;
   @property({ attribute: false }) accessor open = false;
   @property({ attribute: false }) accessor showColors = true;
-  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateTime(iso);
+  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateOnly(iso);
   @property({ attribute: false }) accessor hass: any;
   @property({ attribute: false }) accessor subjectKey = "";
 
@@ -46,7 +47,7 @@ export class BkaSubjectItem extends LitElement {
    */
   private _onToggle() {
     this.dispatchEvent(new CustomEvent("toggle-subject", {
-      detail: { key: this.subject },
+      detail: { key: this.subject.sensor_name },
       bubbles: true,
       composed: true
     }
@@ -54,7 +55,7 @@ export class BkaSubjectItem extends LitElement {
   }
 
   render() {
-    const { subject, marks } = getSubjectInfoAndMarskFromSensor(this.hass, this.subject);
+    const { subject, marks } = getSubjectInfoAndMarskFromSensor(this.hass, this.subject.sensor_name ?? "");
     if (!subject) return nothing;
 
     const abbrStr = subject.subject_abbr || '';
@@ -84,11 +85,11 @@ export class BkaSubjectItem extends LitElement {
       (m) => `${m.id}-${m.date}-${m.mark_text}`,
       (m) => html`
                         <div class="mrow">
-                          <div class=${'m mark ' + gradeClass((m.mark_text || '').trim(), this.showColors)}>${(m.mark_text || '').trim() || '—'}</div>
+                          <div class=${'m mark ' + gradeClass((m.mark_text || '').trim(), this.showColors)} title="${m.mark_text}">${(shortenMark(m.mark_text) || '').trim() || '—'}</div>
                           <div class="mtitle" title="${m.theme}">${m.theme}</div>
                           <div class="mdate">${this.formatDate(m.date)}</div>
                           <div class="mtheme">
-                            ${m.caption ? html`<span class="badge">${m.caption}</span>` : null}
+                            ${m.caption ? html`<span class="badge">${m.caption}</span>` : null}${m.is_new ? EyeOffIcon("icon") : EyeIcon("icon")}
                           </div>
                         </div>`
     )}
@@ -105,11 +106,11 @@ export class BkaSubjectItem extends LitElement {
 export class BkaSubjectCardNew extends LitElement {
   protected createRenderRoot() { return this; }
 
-  @property({ attribute: false }) accessor subjects: string = "";
+  @property({ attribute: false }) accessor subject: SubjectSummary = {};
   @property({ attribute: false }) accessor marksByKey: Record<string, RecentMark[]> = {};
   @property({ attribute: false }) accessor openKeys: Set<string> = new Set();
   @property({ attribute: false }) accessor showColors = true;
-  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => new Date(iso ?? '').toLocaleString('cs-CZ');
+  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateOnly(iso);
   @property({ attribute: false }) accessor hass: any;
   @property({ attribute: false }) accessor open = false;
 
@@ -124,7 +125,7 @@ export class BkaSubjectCardNew extends LitElement {
     // `;
     return html`
       <bka-subject-item
-        .subject=${this.subjects}
+        .subject=${this.subject}
         .hass=${this.hass}
         .open=${this.open}
         .showColors=${this.showColors}
