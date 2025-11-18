@@ -54,7 +54,7 @@ import {
   sortSubjects,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
-import { formatDateTime, safeNum as formatSafeNum } from "./shared/format";
+import { formatDateOnly, safeNum as formatSafeNum } from "./shared/format";
 import { customElement, property, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 
@@ -253,7 +253,7 @@ export class BakalariGradesAllCard extends LitElement {
 
   private _fmtDate(iso?: string): string {
     const locale = this.hass?.locale?.language || undefined;
-    return formatDateTime(iso, { locale });
+    return formatDateOnly(iso, { locale });
   }
 
   // private _gradeNumber(txt?: string): number | null {
@@ -406,13 +406,13 @@ export class BakalariGradesAllCard extends LitElement {
         <h4>Poslední známky</h4>
         ${repeat(
       recent,
-      (m) => m.id ?? `${m.subject_id}-${m.date}-${m.mark_text}`,
+      //      (m) => m.id ?? `${m.subject_id}-${m.date}-${m.mark_text}`,
       (m) => {
         return html`
-              <bka-recent-item
+            <bka-recent-item
                 .mark=${m}
                 .showColors=${this._config.show_colors !== false}
-                .formatDate=${(iso: string) => this._fmtDate(iso)}
+                .formatDate=${(iso: string) => formatDateOnly(iso, { locale: this.hass?.locale?.language || undefined })}
               ></bka-recent-item>
             `;
       },

@@ -214,7 +214,7 @@ ha-card {
   font-weight: 800;
   min-width: 1.6em;
   text-align: center;
-  padding: 2px 8px;
+  padding: 2px 4px;
   border-radius: 10px;
   border: 1px solid var(--divider-color);
   background: var(--secondary-background-color, rgba(0, 0, 0, 0.05));
@@ -310,7 +310,7 @@ ha-card {
 
 .mrow .m {
   grid-area: m;
-  min-width: 40px;
+  min-width: 25px;
   text-align: center;
 }
 
@@ -376,7 +376,7 @@ ha-card {
   grid-template-columns: auto 1fr auto;
   grid-template-areas:
     "mark title date"
-    "mark theme date";
+    "mark theme theme";
   column-gap: 10px;
   row-gap: 4px;
   align-items: center;
@@ -385,7 +385,7 @@ ha-card {
 
 .item .mark {
   grid-area: mark;
-  min-width: 44px;
+  min-width: 25px;
   font-size: 1.1rem;
 }
 
