@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   build: {
     lib: {
       entry: "src/main.ts",
@@ -14,8 +14,8 @@ export default defineConfig({
       },
     },
     outDir: "dist",
-    sourcemap: true,
-    minify: "esbuild",
+    sourcemap: mode === "development",
+    minify: mode === "development" ? false : "esbuild",
     target: "es2020",
   },
   esbuild: {
@@ -23,4 +23,4 @@ export default defineConfig({
     minifyWhitespace: true,
     minifySyntax: true,
   },
-});
+}));
