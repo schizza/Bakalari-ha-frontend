@@ -84,13 +84,14 @@ export interface Config {
   // recent list
   limit_recent?: number;
   recent_on_top: boolean;
+  reflect_subjects_in_recent?: boolean;
 
   // subjects sorting/filtering
   sort_subjects_by?: "name" | "abbr" | "count" | "avg" | "wavg" | "last_date";
   sort_subjects_dir?: "asc" | "desc";
   filter_subjects_min_count?: number;
-  include_subject_ids?: string[]; // normalized by trim()
-  exclude_subject_ids?: string[];
+  include_subject_sensors?: string[];
+  exclude_subject_sensors?: string[];
   limit_subjects?: number;
 
   // marks source and limits
@@ -113,127 +114,15 @@ export class BakalariGradesAllCard extends LitElement {
   // YAML Editor
   static getConfigForm() {
     return {
-      schema: [
-        { name: "label", selector: { label: {} } },
-        { name: "entity", required: true, selector: { entity: {} } },
-        { name: "name", selector: { text: {} } },
-        {
-          type: "grid",
-          name: "",
-          schema: [
-            { name: "show_subjects", selector: { boolean: {} } },
-            { name: "show_recent", selector: { boolean: {} } },
-            { name: "recent_on_top", selector: { boolean: {} } },
-            { name: "show_colors", selector: { boolean: {} } },
-            { name: "persist_open_subjects", selector: { boolean: {} } },
-          ],
-        },
-        {
-          type: "grid",
-          name: "",
-          schema: [
-            {
-              name: "sort_subjects_by",
-              selector: {
-                select: {
-                  options: [
-                    { value: "name", label: "Název" },
-                    { value: "abbr", label: "Zkratka" },
-                    { value: "count", label: "Počet známek" },
-                    { value: "avg", label: "Průměr" },
-                    { value: "wavg", label: "Vážený průměr" },
-                    { value: "last_date", label: "Poslední datum" },
-                  ],
-                },
-              },
-            },
-            {
-              name: "sort_subjects_dir",
-              selector: {
-                select: {
-                  options: [
-                    { value: "asc", label: "Vzestupně" },
-                    { value: "desc", label: "Sestupně" },
-                  ],
-                },
-              },
-            },
-            { name: "filter_subjects_min_count", selector: { number: { min: 0 } } },
-            { name: "limit_subjects", selector: { number: { min: 0 } } },
-          ],
-        },
-        {
-          type: "grid",
-          name: "",
-          schema: [
-            { name: "limit_recent", selector: { number: { min: 0 } } },
-            { name: "limit_subject_marks", selector: { number: { min: 0 } } },
-          ],
-        },
-        {
-          type: "grid",
-          name: "",
-          schema: [
-            { name: "auto_expand_new", selector: { boolean: {} } },
-            { name: "auto_expand_days", selector: { number: { min: 0 } } },
-          ],
-        },
-        { name: "include_subject_ids", selector: { text: {} } },
-        { name: "exclude_subject_ids", selector: { text: {} } },
-      ],
-      computeLabel: (schema: any) => {
-        switch (schema.name) {
-          case "entity":
-            return "Entita";
-          case "name":
-            return "Titulek";
-          case "show_subjects":
-            return "Zobrazit blok Předměty";
-          case "show_recent":
-            return "Zobrazit blok Poslední známky";
-          case "show_colors":
-            return "Barevné zvýraznění známek";
-          case "persist_open_subjects":
-            return "Pamatovat rozbalené předměty";
-          case "recent_on_top":
-            return "Blok poslední známky nad Předměty";
-          case "sort_subjects_by":
-            return "Třídit předměty podle";
-          case "sort_subjects_dir":
-            return "Směr třídění";
-          case "filter_subjects_min_count":
-            return "Min. počet známek (filtr)";
-          case "limit_subjects":
-            return "Limit počtu předmětů (0 = bez limitu)";
-          case "limit_recent":
-            return "Limit posledních známek (0 = bez limitu)";
-          case "limit_subject_marks":
-            return "Limit známek v předmětu (0 = bez limitu)";
-          case "auto_expand_new":
-            return "Auto-rozbalit předměty s novými známkami";
-          case "auto_expand_days":
-            return "Kolik dní zpět je 'nové'";
-          case "include_subject_ids":
-            return "Zahrnout jen ID předmětů (čárkami)";
-          case "exclude_subject_ids":
-            return "Vynechat ID předmětů (čárkami)";
-        }
-        return undefined;
-      },
-      computeHelper: (schema: any) => {
-        switch (schema.name) {
-          case "include_subject_ids":
-          case "exclude_subject_ids":
-            return "Zadej seznam ID oddělený čárkou, např.: 10,  2, 1N";
-          case "marks_attribute":
-            return "Ve výchozím stavu se použije recent (senzor obsahuje všechny známky).";
-        }
-        return undefined;
-      },
       assertConfig: (config: any) => {
         if (!config?.entity) throw new Error("Název entity je vyžadován");
-      },
-    };
+      }
+    }
+  }
+
+  static async getConfigElement() {
+    await import("./bakalari-grades-all/editor");
+    return document.createElement("bakalari-grades-all-editor");
   }
 
   // Default config on card creation
@@ -247,12 +136,15 @@ export class BakalariGradesAllCard extends LitElement {
       recent_on_top: false,
       // limit posledních známek
       limit_recent: 12,
+      reflect_subjects_in_recent: false,
       // třídění a filtrování předmětů
       sort_subjects_by: "name",
       sort_subjects_dir: "asc",
       filter_subjects_min_count: 0,
       include_subject_ids: "",
       exclude_subject_ids: "",
+      include_subject_sensors: [],
+      exclude_subject_sensors: [],
       limit_subjects: 0,
       // zdroj a limity známek
       marks_attribute: "recent",
@@ -270,14 +162,15 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _config: Config = {
     entity: "",
     limit_recent: 12,
+    reflect_subjects_in_recent: false,
     show_subjects: true,
     show_recent: true,
     recent_on_top: false,
     sort_subjects_by: "name",
     sort_subjects_dir: "asc",
     filter_subjects_min_count: 0,
-    include_subject_ids: [],
-    exclude_subject_ids: [],
+    include_subject_sensors: [],
+    exclude_subject_sensors: [],
     limit_subjects: 0,
     // marks source and limits
     limit_subject_marks: 0,
@@ -302,7 +195,11 @@ export class BakalariGradesAllCard extends LitElement {
     const configChanged = changed.has("_config");
 
     if ((hassChanged || configChanged) && this.hass && this._config) {
-      const next = getSubjectsSensorNames(this.hass, this._config);
+      let next = getSubjectsSensorNames(this.hass, this._config);
+      const inc = this._config.include_subject_sensors || [];
+      const exc = this._config.exclude_subject_sensors || [];
+      if (inc.length) next = next.filter((s) => inc.includes(s));
+      if (exc.length) next = next.filter((s) => !exc.includes(s));
       if (
         next.length !== this._listOfSensorNames.length ||
         next.some((s, i) => s !== this._listOfSensorNames[i])
@@ -318,13 +215,14 @@ export class BakalariGradesAllCard extends LitElement {
     }
     this._config = {
       limit_recent: 12,
+      reflect_subjects_in_recent: false,
       show_subjects: true,
       show_recent: true,
       sort_subjects_by: "name",
       sort_subjects_dir: "asc",
       filter_subjects_min_count: 0,
-      include_subject_ids: [],
-      exclude_subject_ids: [],
+      include_subject_sensors: [],
+      exclude_subject_sensors: [],
       limit_subjects: 0,
       limit_subject_marks: 0,
       // behavior
@@ -513,7 +411,9 @@ export class BakalariGradesAllCard extends LitElement {
    */
   private _recentBlock() {
     const limit = Math.max(0, Number(this._config.limit_recent ?? 12)) || 0;
-    const recent: RecentMark[] = getRecentMarks(this.hass, this._listOfSensorNames, limit);
+    const useSelected = !!this._config.reflect_subjects_in_recent;
+    const sensors = useSelected ? this._listOfSensorNames : getSubjectsSensorNames(this.hass, this._config);
+    const recent: RecentMark[] = getRecentMarks(this.hass, sensors, limit);
     if (!recent.length) {
       return html`<div class="empty">Žádné poslední známky.</div>`;
     }
