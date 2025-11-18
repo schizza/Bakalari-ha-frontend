@@ -101,7 +101,7 @@ function isNumber(str: string): boolean {
 
   const s = str.trim()
 
-  if (str === "") return false
+  if (s === "") return false
   const normalized = s.replace(",", ".");
   const n = Number(normalized);
 
@@ -276,10 +276,12 @@ export function sortSubjects(hass: any, subjectList: string[] | Set<string>, sor
     getSubjectInfoAndMarskFromSensor(hass, subj).subject
   ).slice();
 
+  const coll = new Intl.Collator("cs", { sensitivity: "base", numeric: false });
+
   const byVal = (s: SubjectSummary): any => {
     switch (by) {
       case "abbr":
-        return abbr(s.subject_abbr).toLowerCase();
+        return abbr(s.subject_abbr);
       case "count":
         return Number(s.count || 0);
       case "avg":
@@ -289,8 +291,9 @@ export function sortSubjects(hass: any, subjectList: string[] | Set<string>, sor
       case "last_date":
         return new Date(s.last_date || 0).getTime();
       case "name":
+        return subjectTitle(s);
       default:
-        subjectTitle(s).toLowerCase()
+        return subjectTitle(s);
     }
   }
 
@@ -299,9 +302,13 @@ export function sortSubjects(hass: any, subjectList: string[] | Set<string>, sor
       const av = byVal(a);
       const bv = byVal(b);
 
-      if (av < bv) return asc ? -1 : 1;
-      if (av > bv) return asc ? 1 : -1;
-      return 0;
+      let res: number;
+      if (typeof av === "string" && typeof bv === "string") {
+        res = coll.compare(av, bv);
+      } else {
+        res = av < bv ? -1 : av > bv ? 1 : 0;
+      }
+      return asc ? res : -res;
     })
 
   return listOfSubjects
