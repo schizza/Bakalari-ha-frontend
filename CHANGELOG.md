@@ -1,5 +1,53 @@
 # Changelog
 
+# 0.5.0
+
+## ✨ Nové funkce
+
+**Recent marks on top (#53) @schizza**
+- Přidána možnost zobrazit blok `Poslední známky` nad `Předměty` 
+
+**Add option to select subject sensors in UI (#56) @schizza**  
+- Přidána možnost výběru filtrace předmětů přes UI
+- V základní nastavení jsou zobrazeny všechny předměty
+- Lze filtrovat podle pravidla: `Zobrazit pouze` a `Nezobrazovat`
+- Lze zapnout, aby `Poslední známky` respektovaly filtr pro `Předměty`, tudíž se nebudou zobrazovat poslední známky z vyfiltrovaných předmětů.
+
+**Adds Eye icon to indicate if mark has been viewed. (#59) @schizza**
+- přidána ikona oka, které signalizuje, zda známka byla podepsána či ne
+- otevřené oko - známka podepsána, přeškrtnuté oko - známka nepodepsána
+
+## 🐛 Opravy chyb
+
+**Fix rendering last_marks (#52) @schizza**
+- opraveno vykreslení posledních známek
+- známky se nyní dynamicky mění při změně stavu a ne až po reloadu
+
+**Fixes sorting subjects by name or abbr. (#61) @schizza**
+- opraveno třídění předmětů podel jména nebo zkratky
+
+**Use date-only formatting and adjust recent item layout (#60) @schizza**
+- změna vykreslení datumu známky, nově se vykresluje pouze datum bez času
+- změna rozvržení textu v `Poseldní známky`, tak aby popis známky byl čitelnější
+
+**Long text marks are shortend. (#58) @schizza**  
+- Změna chování textu známky. Pokud je text delší než 3 znaky, pak se zkrátí na jeden znak
+- zlepší se vykreslování seznamu známek
+- například: již se nezobrazuje ve známce text `Nemoc`, ale jen `N`
+- plný text se zobrazí v popisu při najetí myši na známku
+
+**Title of mark (#57) @schizza**
+- titulek (popis známky) upraven na 2 sloupce
+- datum odsazeno na druhý řádek
+
+**Toggle subject (#55) @schizza**
+- oprava `Event key` - zpráva posílá pouze název senzoru a ne celý objekt
+
+- odstraněna možnost `include_subject_ids/exclude_subject_ids`
+- nahrazena vizuálním editorem
+
+- přidán fallback pro `SubjectSummary` při neexistujícím předmětu.
+
 # 0.4.0
 
 ## ✨ Nové funkce
@@ -27,8 +75,6 @@
 	Zajišťuje správnou konverzi odkazů a escapování URL adres.
 	Formátuje textové uzly odlišně podle jejich nadřazeného tagu pro lepší linkifikaci.
 	Escapuje URL adresy, aby se zabránilo potenciálním injection zranitelnostem..
-
-Fix of lost focus on search input by rendering only the message body on search input.
 
 **Improves message card click handling (#46) @schizza**
 - Přesouvá registraci obsluhy kliknutí do `connectedCallback` a její odpojení do `disconnectedCallback` pro správné řízení životního cyklu prvku.
