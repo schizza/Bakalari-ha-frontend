@@ -23,7 +23,7 @@ import { classMap } from "lit/directives/class-map.js";
 import { repeat } from "lit/directives/repeat.js";
 import { gradeClass } from "./grade-utils";
 import { type RecentMark, SubjectSummary, getSubjectInfoAndMarskFromSensor, shortenMark } from "./subject-utils";
-import { formatDateTime } from "../shared/format";
+import { formatDateOnly } from "../shared/format";
 import { EyeIcon, EyeOffIcon } from "./icons";
 
 /**
@@ -38,7 +38,7 @@ export class BkaSubjectItem extends LitElement {
   @property({ attribute: false }) accessor subject!: SubjectSummary;
   @property({ attribute: false }) accessor open = false;
   @property({ attribute: false }) accessor showColors = true;
-  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateTime(iso);
+  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateOnly(iso);
   @property({ attribute: false }) accessor hass: any;
   @property({ attribute: false }) accessor subjectKey = "";
 
@@ -110,7 +110,7 @@ export class BkaSubjectCardNew extends LitElement {
   @property({ attribute: false }) accessor marksByKey: Record<string, RecentMark[]> = {};
   @property({ attribute: false }) accessor openKeys: Set<string> = new Set();
   @property({ attribute: false }) accessor showColors = true;
-  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => new Date(iso ?? '').toLocaleString('cs-CZ');
+  @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateOnly(iso);
   @property({ attribute: false }) accessor hass: any;
   @property({ attribute: false }) accessor open = false;
 
