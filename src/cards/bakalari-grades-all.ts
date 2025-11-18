@@ -91,6 +91,8 @@ export interface Config {
   filter_subjects_min_count?: number;
   include_subject_ids?: string[]; // normalized by trim()
   exclude_subject_ids?: string[];
+  include_subject_sensors?: string[];
+  exclude_subject_sensors?: string[];
   limit_subjects?: number;
 
   // marks source and limits
@@ -178,8 +180,11 @@ export class BakalariGradesAllCard extends LitElement {
             { name: "auto_expand_days", selector: { number: { min: 0 } } },
           ],
         },
+        { name: "include_subject_sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
+        { name: "exclude_subject_sensors", selector: { entity: { multiple: true, domain: "sensor" } } },
         { name: "include_subject_ids", selector: { text: {} } },
-        { name: "exclude_subject_ids", selector: { text: {} } },
+
+
       ],
       computeLabel: (schema: any) => {
         switch (schema.name) {
@@ -217,6 +222,10 @@ export class BakalariGradesAllCard extends LitElement {
             return "Zahrnout jen ID předmětů (čárkami)";
           case "exclude_subject_ids":
             return "Vynechat ID předmětů (čárkami)";
+          case "include_subject_sensors":
+            return "Zobrazit jen vybrané senzory předmětů";
+          case "exclude_subject_sensors":
+            return "Vynechat vybrané senzory předmětů";
         }
         return undefined;
       },
@@ -225,6 +234,9 @@ export class BakalariGradesAllCard extends LitElement {
           case "include_subject_ids":
           case "exclude_subject_ids":
             return "Zadej seznam ID oddělený čárkou, např.: 10,  2, 1N";
+          case "include_subject_sensors":
+          case "exclude_subject_sensors":
+            return "Vyber senzory s předměty (multi‑select).";
           case "marks_attribute":
             return "Ve výchozím stavu se použije recent (senzor obsahuje všechny známky).";
         }
@@ -253,6 +265,8 @@ export class BakalariGradesAllCard extends LitElement {
       filter_subjects_min_count: 0,
       include_subject_ids: "",
       exclude_subject_ids: "",
+      include_subject_sensors: [],
+      exclude_subject_sensors: [],
       limit_subjects: 0,
       // zdroj a limity známek
       marks_attribute: "recent",
@@ -278,6 +292,8 @@ export class BakalariGradesAllCard extends LitElement {
     filter_subjects_min_count: 0,
     include_subject_ids: [],
     exclude_subject_ids: [],
+    include_subject_sensors: [],
+    exclude_subject_sensors: [],
     limit_subjects: 0,
     // marks source and limits
     limit_subject_marks: 0,
@@ -302,7 +318,11 @@ export class BakalariGradesAllCard extends LitElement {
     const configChanged = changed.has("_config");
 
     if ((hassChanged || configChanged) && this.hass && this._config) {
-      const next = getSubjectsSensorNames(this.hass, this._config);
+      let next = getSubjectsSensorNames(this.hass, this._config);
+      const inc = this._config.include_subject_sensors || [];
+      const exc = this._config.exclude_subject_sensors || [];
+      if (inc.length) next = next.filter((s) => inc.includes(s));
+      if (exc.length) next = next.filter((s) => !exc.includes(s));
       if (
         next.length !== this._listOfSensorNames.length ||
         next.some((s, i) => s !== this._listOfSensorNames[i])
@@ -325,6 +345,8 @@ export class BakalariGradesAllCard extends LitElement {
       filter_subjects_min_count: 0,
       include_subject_ids: [],
       exclude_subject_ids: [],
+      include_subject_sensors: [],
+      exclude_subject_sensors: [],
       limit_subjects: 0,
       limit_subject_marks: 0,
       // behavior
