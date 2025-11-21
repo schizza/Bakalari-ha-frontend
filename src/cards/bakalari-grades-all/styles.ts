@@ -17,6 +17,11 @@ ha-card {
   height: 15px;
 }
 
+.icon-sig {
+  width: 25px;
+  height: 25px;
+}
+
 .wrap {
   padding: 12px 16px 16px;
   display: flex;

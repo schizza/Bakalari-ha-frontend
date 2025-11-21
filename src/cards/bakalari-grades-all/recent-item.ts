@@ -3,7 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import { gradeClass } from "./grade-utils";
 import { abbr, type RecentMark } from "./subject-utils";
 import { formatDateOnly } from "../shared/format";
-import { EyeIcon, EyeOffIcon } from "./icons";
+import { EyeIcon, EyeOffIcon, podpis1 } from "./icons";
 
 /**
  * bka-recent-item
@@ -43,7 +43,7 @@ export class BkaRecentItem extends LitElement {
         <div class="date">${this.formatDate(m.date)} <span class="t" title=${m.is_new ? "Nepodepsáno" : "Podepsáno"}> ${m.is_new ? EyeOffIcon("icon") : EyeIcon("icon")} </span></div >
   <div class="theme" >
     ${caption ? html`<span class="badge" title="Typ">${caption}</span>` : null}
-<span class="t" > ${theme || "—"} </span>
+<span class="t" > ${theme || "—"} </span><span class="t">${podpis1("icon-sig")}</span>
   </div>
   </div>
     `;
