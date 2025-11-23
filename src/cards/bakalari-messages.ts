@@ -222,6 +222,35 @@ export class BakalariMessagesCard extends LitElement {
 
   // ---- Safe HTML helpers ----
 
+  private _filtered(messages: MessageItem[]): MessageItem[] {
+    let arr = Array.isArray(messages) ? messages.slice() : [];
+    const q = (this._query || "").toLowerCase().trim();
+    if (q) {
+      arr = arr.filter(
+        (m) =>
+          (m.title || "").toLowerCase().includes(q) ||
+          (m.sender || "").toLowerCase().includes(q) ||
+          (m.text || "").toLowerCase().includes(q),
+      );
+    }
+    if (this._onlyUnread) arr = arr.filter((m) => m.read === false);
+
+    const asc = (this._config.sort || "desc").toLowerCase() === "asc";
+    arr.sort((a, b) => {
+      const at = new Date(a.sent || 0).getTime();
+      const bt = new Date(b.sent || 0).getTime();
+      return at - bt;
+    });
+    if (!asc) arr.reverse();
+
+    const limit = Math.max(0, Number(this._config.limit || 0));
+    if (limit > 0) arr = arr.slice(0, limit);
+
+    return arr;
+  }
+
+  // ---- Safe HTML helpers ----
+
   private _escape(s: any) {
     return String(s ?? "")
       .replace(/&/g, "&amp;")
