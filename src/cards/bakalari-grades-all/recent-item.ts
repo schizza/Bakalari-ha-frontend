@@ -40,7 +40,7 @@ export class BkaRecentItem extends LitElement {
       <div class="item">
         <div class=${"mark " + gradeClass(markText, this.showColors)}>${markText || "—"}</div>
         <div class="title">${subj}</div>
-        <div class="date">${this.formatDate(m.date)} <span class="t" title=${m.is_new ? "Nepodepsáno" : "Podepsáno"}> ${m.is_new ? EyeOffIcon("icon") : EyeIcon("icon")} </span></div >
+        <div class="date">${this.formatDate(m.date)} <span class="t" title=${m.confirmed ? "Podepsáno" : "Nepodepsáno"}> ${m.confirmed ? EyeIcon("icon") : EyeOffIcon("icon")} </span></div >
   <div class="theme" >
     ${caption ? html`<span class="badge" title="Typ">${caption}</span>` : null}
 <span class="t" > ${theme || "—"} </span>

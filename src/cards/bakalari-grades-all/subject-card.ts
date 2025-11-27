@@ -89,7 +89,7 @@ export class BkaSubjectItem extends LitElement {
                           <div class="mtitle" title="${m.theme}">${m.theme}</div>
                           <div class="mdate">${this.formatDate(m.date)}</div>
                           <div class="mtheme">
-                            ${m.caption ? html`<span class="badge">${m.caption}</span>` : null}${m.is_new ? EyeOffIcon("icon") : EyeIcon("icon")}
+                            ${m.caption ? html`<span class="badge">${m.caption}</span>` : null}${m.confirmed ? EyeIcon("icon") : EyeOffIcon("icon")}
                           </div>
                         </div>`
     )}
