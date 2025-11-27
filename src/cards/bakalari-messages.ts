@@ -48,6 +48,7 @@ interface MessageItem {
   sent?: string | number | Date;
   read?: boolean;
   attachments?: MessageAttachment[];
+  child_key?: string;
 }
 
 export interface Config {
@@ -187,6 +188,8 @@ export class BakalariMessagesCard extends LitElement {
         "Atribut 'messages' není pole. Dostupné atributy: " + Object.keys(attrs).sort().join(", ");
       return [];
     }
+    messages = messages.map((m: any) => ({ ...m, child_key: attrs.child_key })
+    );
     return messages as MessageItem[];
   }
 
@@ -344,7 +347,7 @@ export class BakalariMessagesCard extends LitElement {
   }
 
   // ---- Events ----
-  private async _signMessage(id: string, msgId: string, e?: Event) {
+  private async _signMessage(id: string, msgId: string, child_key: string, e?: Event) {
     e?.stopPropagation?.();
     const entityId = this._config?.entity || "";
     if (!id || !msgId || !entityId || !this.hass) return;
@@ -365,9 +368,11 @@ export class BakalariMessagesCard extends LitElement {
     try {
       if (delay) await sleep(delay);
       // Mark the message as read (expects a service provided by the Bakaláři integration)
-      await this.hass.callService("bakalari", "mark_message_read", {
+      console.log("Calling service: " + entityId + " with msg id: " + msgId + " child_key: " + child_key)
+      await this.hass.callService("bakalari", "mark_message_as_read", {
         entity_id: entityId,
         message_id: msgId,
+        child_key: child_key
       });
 
       this._toast("Zpráva označena jako přečtená.");
@@ -380,12 +385,12 @@ export class BakalariMessagesCard extends LitElement {
       this._toast("Nepodařilo se označit zprávu jako přečtenou.", 4000);
       console.warn("Failed to call bakalari.mark_message_read", err);
     }
-
+    // refresh!!
     try {
       if (delay) await sleep(delay);
       // Refresh the entity to fetch updated messages
-      await this.hass.callService("homeassistant", "update_entity", {
-        entity_id: entityId,
+      await this.hass.callService("bakalari", "_srv_mark_message_as_read", {
+        entity_id: entityId, message_id: msgId, child_key: child_key
       });
     } catch (err) {
       console.warn("Failed to refresh entity", err);
@@ -505,7 +510,7 @@ export class BakalariMessagesCard extends LitElement {
                           <div class="date">${this._fmtDate(m.sent || "")}</div>
                           ${this._loadingIds.has(id)
                   ? html`<div class="icon-sig" style="cursor: progress;" title="Označování…"><svg class="spinner" viewBox="0 0 50 50" width="24" height="24" role="img" aria-label="Načítání"><circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="90 150"><animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/></circle></svg></div>`
-                  : html`<div class="icon-sig" style="cursor: pointer;" title="Označit jako přečtené" @click=${(e: Event) => this._signMessage(id, (m?.mid) ? String(m.mid) : "", e)}>${signature("icon-sig")}</div>`}
+                  : html`<div class="icon-sig" style="cursor: pointer;" title="Označit jako přečtené" @click=${(e: Event) => this._signMessage(id, (m?.mid) ? String(m.mid) : "", m.child_key ?? "", e)}>${signature("icon-sig")}</div>`}
                         </div>
                         <div class="body">
                           <div class="text">${unsafeHTML(htmlText)}</div>
