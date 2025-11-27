@@ -52,6 +52,7 @@ import {
   getSubjectsSensorNames,
   getRecentMarks,
   sortSubjects,
+  count_unconfirmed,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
 import { formatDateOnly, safeNum as formatSafeNum } from "./shared/format";
@@ -452,6 +453,7 @@ export class BakalariGradesAllCard extends LitElement {
     const avg = this._safeNum(attrs.avg, 3);
     const wavg = this._safeNum(attrs.wavg, 3);
     const icon = this._icon(attrs);
+    const unconfirmed = count_unconfirmed(stateObj, this.hass);
 
     if (this._autoExpandNew && !this._autoApplied) {
       this._applyAutoExpand(attrs);
@@ -505,6 +507,10 @@ export class BakalariGradesAllCard extends LitElement {
                     ><span class="label">Nové</span> <strong>${newCount}</strong></span
                   >`
         : null}
+            <span class="chip">
+              <span class="label">Nepodepsané<strong> ${unconfirmed}</strong></span>
+
+            </span>
             </div>
           </div>
 

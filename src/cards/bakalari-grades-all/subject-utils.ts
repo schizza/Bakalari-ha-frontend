@@ -39,6 +39,7 @@ export interface RecentMark {
   points_text?: string;
   max_points?: number;
   teacher?: string | null;
+  confirmed?: boolean;
 }
 
 export interface Mark {
@@ -55,6 +56,7 @@ export interface Mark {
   points_text?: string;
   max_points?: number;
   teacher?: string | null;
+  confirmed?: boolean;
 }
 
 export interface ConfigForSubjects {
@@ -336,4 +338,23 @@ export function getRecentMarks(hass: any, sensorNames: string[], limit?: number)
 export function extractSubjects(attrs: AnyObj): SubjectSummary[] {
   const list: any = Array.isArray(attrs?.by_subject) ? attrs.by_subject : [];
   return (list as SubjectSummary[]).slice();
+}
+
+/**
+ *
+ * @param attrs Record of all marks sensor
+ * @param hass
+ * @returns total cound of unconfirmed makrs.
+ */
+export function count_unconfirmed(attrs: AnyObj, hass: any): number {
+
+  const src: Record<string, any> = attrs.attributes.sensor_map;
+  console.log(src)
+  const count = Object.values(src)
+    .map(s => getSubjectInfoAndMarskFromSensor(hass, s).marks)
+    .flat()
+    .filter(mark => !mark.confirmed)
+    .length;
+
+  return count
 }
