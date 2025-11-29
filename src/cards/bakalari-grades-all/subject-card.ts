@@ -18,13 +18,15 @@
  */
 
 import { LitElement, html, nothing } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
 import { classMap } from "lit/directives/class-map.js";
 import { repeat } from "lit/directives/repeat.js";
 import { gradeClass } from "./grade-utils";
-import { type RecentMark, SubjectSummary, getSubjectInfoAndMarskFromSensor, shortenMark } from "./subject-utils";
+import { type RecentMark, SubjectSummary, getSubjectInfoAndMarskFromSensor, shortenMark, signMarks } from "./subject-utils";
 import { formatDateOnly } from "../shared/format";
 import { EyeIcon, EyeOffIcon } from "./icons";
+import { signature, spinner } from "../shared/icons";
+import { runWithPending } from "../shared/utils";
 
 /**
  * Komponenta pro předmět v Bakaláři.
@@ -41,6 +43,8 @@ export class BkaSubjectItem extends LitElement {
   @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateOnly(iso);
   @property({ attribute: false }) accessor hass: any;
   @property({ attribute: false }) accessor subjectKey = "";
+  @property({ attribute: false }) accessor _child_key: string = "";
+  @state() accessor _pendingToggle = false;
 
   /**
    * Create new listener on click event
@@ -50,8 +54,18 @@ export class BkaSubjectItem extends LitElement {
       detail: { key: this.subject.sensor_name },
       bubbles: true,
       composed: true
-    }
-    ))
+    }));
+    // krátké vizuální potvrzení, i když toggle proběhne okamžitě
+  }
+
+  private async _signMark(e: Event, id: string, child_key: string) {
+    e?.stopPropagation()
+
+    if (!id || !child_key) return;
+    await runWithPending(
+      (v: boolean) => this._pendingToggle = v,
+      signMarks(child_key, [id], this.hass)
+    )
   }
 
   render() {
@@ -89,13 +103,25 @@ export class BkaSubjectItem extends LitElement {
                           <div class="mtitle" title="${m.theme}">${m.theme}</div>
                           <div class="mdate">${this.formatDate(m.date)}</div>
                           <div class="mtheme">
-                            ${m.caption ? html`<span class="badge">${m.caption}</span>` : null}${m.is_new ? EyeOffIcon("icon") : EyeIcon("icon")}
-                          </div>
-                        </div>`
+                            ${m.caption ? html`<span class="badge">${m.caption}</span>` : null}
+                            <span class="label">
+                            ${m.confirmed ? EyeIcon("icon")
+          : html`${EyeOffIcon("icon")}
+                  <span
+                    @click=${(e: Event) =>
+              this._signMark(e, m.id!.toString(), this._child_key)
+            }>
+                  ${this._pendingToggle
+              ? spinner("icon-sig", 14)
+              : signature("icon-sig")
+            }
+                  </span>`}
+                         </div>
+  </div>`
     )}
-                  </div>` : null}
-              </div>
-            `;
+</div>` : null}
+</div>
+  `;
   }
 }
 
@@ -113,6 +139,7 @@ export class BkaSubjectCardNew extends LitElement {
   @property({ attribute: false }) accessor formatDate: (iso?: string) => string = (iso?: string) => formatDateOnly(iso);
   @property({ attribute: false }) accessor hass: any;
   @property({ attribute: false }) accessor open = false;
+  @property({ attribute: false }) accessor _child_key: string = "";
 
   render() {
     // return html`
@@ -129,6 +156,7 @@ export class BkaSubjectCardNew extends LitElement {
         .hass=${this.hass}
         .open=${this.open}
         .showColors=${this.showColors}
+        ._child_key=${this._child_key}
       ></bka-subject-item>
       `;
   }

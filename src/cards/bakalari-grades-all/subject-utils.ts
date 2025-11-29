@@ -7,6 +7,7 @@
 
 import { Config } from '../bakalari-grades-all';
 import type { HomeAssistant } from "custom-card-helpers"
+import { toast_msg } from '../shared/utils';
 
 export type AnyObj = Record<string, any>;
 
@@ -39,6 +40,7 @@ export interface RecentMark {
   points_text?: string;
   max_points?: number;
   teacher?: string | null;
+  confirmed?: boolean;
 }
 
 export interface Mark {
@@ -55,6 +57,7 @@ export interface Mark {
   points_text?: string;
   max_points?: number;
   teacher?: string | null;
+  confirmed?: boolean;
 }
 
 export interface ConfigForSubjects {
@@ -140,12 +143,12 @@ export function extractAllMarks(attrs: AnyObj): RecentMark[] {
  * Group marks by subject key and sort each subject's marks by date desc.
  */
 export function groupMarksBySubject(
-  attrs: AnyObj,
+  marks: AnyObj,
 ): Map<string, RecentMark[]> {
   const grouped = new Map<string, RecentMark[]>();
-  const rec: RecentMark[] = extractAllMarks(attrs);
+  // const rec: RecentMark[] = extractAllMarks(attrs);
 
-  for (const m of rec) {
+  for (const m of Object.values(marks)) {
     const key = subjectKeyFromMark(m);
     if (!key) continue;
     const arr = grouped.get(key) || [];
@@ -336,4 +339,35 @@ export function getRecentMarks(hass: any, sensorNames: string[], limit?: number)
 export function extractSubjects(attrs: AnyObj): SubjectSummary[] {
   const list: any = Array.isArray(attrs?.by_subject) ? attrs.by_subject : [];
   return (list as SubjectSummary[]).slice();
+}
+
+/**
+ *
+ * @param attrs Record of all marks sensor
+ * @param hass
+ * @returns total cound of unconfirmed makrs.
+ */
+export function count_unconfirmed(attrs: AnyObj, hass: any): Array<string> {
+
+  const src: Record<string, any> = attrs.attributes.sensor_map;
+  const count = Object.values(src)
+    .map(s => getSubjectInfoAndMarskFromSensor(hass, s).marks)
+    .flat()
+    .filter(mark => !mark.confirmed)
+    .map(m => m.id as string);
+
+  return count
+}
+
+export async function signMarks(child_key: string, subjects: Array<string>, hass: any) {
+
+  try {
+    await hass.callService("bakalari", "sign_all_marks", {
+      child_key: child_key,
+      subjects: subjects
+    });
+  }
+  catch (err) {
+    toast_msg("Nepodařilo se podepsat známky. (" + err + ")", 4000)
+  }
 }

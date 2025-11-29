@@ -52,6 +52,9 @@ import {
   getSubjectsSensorNames,
   getRecentMarks,
   sortSubjects,
+  count_unconfirmed,
+  signMarks,
+  getSubjectInfoAndMarskFromSensor,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
 import { formatDateOnly, safeNum as formatSafeNum } from "./shared/format";
@@ -69,6 +72,8 @@ registerCard(
 );
 
 import type { AnyObj, RecentMark } from "./bakalari-grades-all/subject-utils";
+import { signature, spinner } from "./shared/icons";
+import { get_child_key, runWithPending } from "./shared/utils";
 
 /**
  * Core configuration for the Bakaláři grades card.
@@ -185,6 +190,8 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _autoApplied: boolean = false;
   private _persist: any = null;
   @state() private accessor _listOfSensorNames: string[] = [];
+  @state() accessor _pendingSign: boolean = false;
+  private _child_key: string = "";
 
   static styles = styles;
 
@@ -204,6 +211,7 @@ export class BakalariGradesAllCard extends LitElement {
       ) {
         this._listOfSensorNames = next;
       }
+      this._child_key = get_child_key(this._config.entity, this.hass)
     }
   }
 
@@ -327,11 +335,14 @@ export class BakalariGradesAllCard extends LitElement {
   }
 
   /**
-   * TODO: Fix auto expand
+   * TODO:  Will need to make config variable for this.
+   *
+   * This will expand all marks new then configured date
+   *
    * @param attrs
    * @returns
    */
-  private _applyAutoExpand(attrs: AnyObj) {
+  private _applyAutoExpandByDate(attrs: AnyObj) {
     const days = Math.max(0, Number(this._config.auto_expand_days || 7));
     if (!days) return;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
@@ -345,6 +356,37 @@ export class BakalariGradesAllCard extends LitElement {
         changed = true;
       }
     }
+    if (changed && this._config.persist_open_subjects !== false) {
+      this._persist?.saveSet("open_subjects", this._openSubjects);
+    }
+    this._autoApplied = true;
+  }
+
+  /**
+   * Auto expand subjects with unsigned marks
+   *
+   * @param sensor_map
+   */
+
+  private _applyAutoExpand(sensor_map: AnyObj) {
+
+    const marks: Array<RecentMark> = Object.values(sensor_map)
+      .flatMap(sensor => getSubjectInfoAndMarskFromSensor(this.hass, sensor).marks)
+
+    const grouped = groupMarksBySubject(marks);
+    let changed = false;
+
+    for (const [key, val] of grouped.entries()) {
+      if (!val || !val.length) continue;
+
+
+      const hasUnsigned = val.some((m) => !m.confirmed)
+      if (hasUnsigned && !this._openSubjects.has(sensor_map[key])) {
+        this._openSubjects.add(sensor_map[key]);
+        changed = true;
+      }
+    }
+
     if (changed && this._config.persist_open_subjects !== false) {
       this._persist?.saveSet("open_subjects", this._openSubjects);
     }
@@ -377,6 +419,7 @@ export class BakalariGradesAllCard extends LitElement {
                 .hass=${this.hass}
                 .openKeys=${this._openSubjects}
                 .showColors=${this._config.show_colors !== false}
+                ._child_key=${this._child_key}
                 @toggle-subject=${(e: CustomEvent<{ key: string }>) =>
           this._toggleSubject(e.detail.key, e)}
               ></bka-subject-card-new>
@@ -413,12 +456,22 @@ export class BakalariGradesAllCard extends LitElement {
                 .mark=${m}
                 .showColors=${this._config.show_colors !== false}
                 .formatDate=${(iso: string) => formatDateOnly(iso, { locale: this.hass?.locale?.language || undefined })}
+                .hass=${this.hass}
+                .child_key=${this._child_key}
               ></bka-recent-item>
             `;
       },
     )}
       </div>
     `;
+  }
+  private async _signMarks(e: Event, child_key: string, unconfirmed: Array<string>) {
+    e?.stopPropagation?.();
+    if (!child_key || this._pendingSign || !unconfirmed) return;
+
+    await runWithPending((v: boolean) => (this._pendingSign = v),
+      signMarks(child_key, unconfirmed, this.hass),
+      500);
   }
 
   /**
@@ -452,9 +505,10 @@ export class BakalariGradesAllCard extends LitElement {
     const avg = this._safeNum(attrs.avg, 3);
     const wavg = this._safeNum(attrs.wavg, 3);
     const icon = this._icon(attrs);
+    const unconfirmed: Array<string> = count_unconfirmed(stateObj, this.hass);
 
     if (this._autoExpandNew && !this._autoApplied) {
-      this._applyAutoExpand(attrs);
+      this._applyAutoExpand(stateObj.attributes?.sensor_map);
     }
 
     const subjects = this._config.show_subjects !== false ? this._subjectsBlock() : null;
@@ -472,13 +526,13 @@ export class BakalariGradesAllCard extends LitElement {
           <div class="tools">
             <button class="btn" @click=${() => this._expandAll()}>Rozbalit vše</button>
             <button class="btn" @click=${() => this._collapseAll()}>Sbalit vše</button>
-            <label class="switch" title="Automaticky rozbalit předměty s novými známkami">
+            <label class="switch" title="Automaticky rozbalit předměty s nepodepsanými známkami">
               <input
                 type="checkbox"
                 .checked=${this._autoExpandNew}
                 @change=${(e: any) => this._onToggleAutoExpand(e)}
               />
-              <span>Auto-rozbalit nové</span>
+              <span>Rozbal nepodepsané</span>
             </label>
           </div>
           <div class="summary">
@@ -505,12 +559,18 @@ export class BakalariGradesAllCard extends LitElement {
                     ><span class="label">Nové</span> <strong>${newCount}</strong></span
                   >`
         : null}
+            <span class="chip">
+              <span class="label">Nepodepsané<strong> ${unconfirmed.length}</strong></span>
+            </span>
+            ${unconfirmed.length > 0 ? html`<span class=label" title="Podepsat vše" @click=${(e: Event) => this._signMarks(e, this._child_key, unconfirmed)}> ${this._pendingSign ? spinner("icon-sig", 14) : signature("icon-sig")} </span>`
+        : null
+      }
             </div>
-          </div>
+  </div>
 
           ${sort_blok()}
-        </div>
-      </ha-card>
+</div>
+  </ha-card>
     `;
   }
 }
