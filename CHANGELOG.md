@@ -1,13 +1,32 @@
 # Changelog
 
+# 0.6.0
+
+## ✨ Nové funkce
+
+**Sing marks (#66) @schizza**
+  - Přidána funkce k podepsání známek
+  - u nepodepsaných známek je zobrazena ikona podpisu, která známku podepíše
+  - možnost podepsat známky hromadně v přehledu známek.
+
+## 🐛 Opravy chyb
+
+ - opravena možnost `Auto-rozbalit`
+ - nyní se automaticky rozbalují předměty s nepodepsanými známkami
+
+---
+## 📦 Technické
+- Vyžaduje backend: `1.4.0+`
+- Vyžaduje API: `0.9.0+`
+
 # 0.5.0
 
 ## ✨ Nové funkce
 
 **Recent marks on top (#53) @schizza**
-- Přidána možnost zobrazit blok `Poslední známky` nad `Předměty` 
+- Přidána možnost zobrazit blok `Poslední známky` nad `Předměty`
 
-**Add option to select subject sensors in UI (#56) @schizza**  
+**Add option to select subject sensors in UI (#56) @schizza**
 - Přidána možnost výběru filtrace předmětů přes UI
 - V základní nastavení jsou zobrazeny všechny předměty
 - Lze filtrovat podle pravidla: `Zobrazit pouze` a `Nezobrazovat`
@@ -30,7 +49,7 @@
 - změna vykreslení datumu známky, nově se vykresluje pouze datum bez času
 - změna rozvržení textu v `Poseldní známky`, tak aby popis známky byl čitelnější
 
-**Long text marks are shortend. (#58) @schizza**  
+**Long text marks are shortend. (#58) @schizza**
 - Změna chování textu známky. Pokud je text delší než 3 znaky, pak se zkrátí na jeden znak
 - zlepší se vykreslování seznamu známek
 - například: již se nezobrazuje ve známce text `Nemoc`, ale jen `N`
