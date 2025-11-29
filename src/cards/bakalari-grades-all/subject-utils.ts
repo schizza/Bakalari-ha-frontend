@@ -7,7 +7,7 @@
 
 import { Config } from '../bakalari-grades-all';
 import type { HomeAssistant } from "custom-card-helpers"
-import { toast_msg } from '../shared/utisl';
+import { toast_msg } from '../shared/utils';
 
 export type AnyObj = Record<string, any>;
 

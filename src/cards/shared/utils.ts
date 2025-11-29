@@ -36,3 +36,39 @@ export function toast_msg(message: string, duration = 3000) {
     }),
   );
 }
+
+/**
+ * Promise that will reslove after time
+ */
+export const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Run async task with pending status
+
+ * - calls setPending before start
+ * - holds pending in minMs
+ * - set pending to false after finished
+ *
+ * @param setPending setter
+ * @param task Promise
+ * @param minMs minimal time to pending be active
+ * @returns result from task
+ */
+export async function runWithPending<T>(
+  setPending: (v: boolean) => void,
+  task: Promise<T>,
+  minMs = 300
+): Promise<T> {
+  const start = Date.now();
+  setPending(true);
+  try {
+    const result = await task;
+    return result;
+  } finally {
+    const elapsed = Date.now() - start;
+    const wait = Math.max(0, minMs - elapsed);
+    if (wait > 0) await sleep(wait);
+    setPending(false);
+  }
+}
