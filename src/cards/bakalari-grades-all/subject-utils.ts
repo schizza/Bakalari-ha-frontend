@@ -7,6 +7,7 @@
 
 import { Config } from '../bakalari-grades-all';
 import type { HomeAssistant } from "custom-card-helpers"
+import { toast_msg } from '../shared/utisl';
 
 export type AnyObj = Record<string, any>;
 
@@ -346,15 +347,27 @@ export function extractSubjects(attrs: AnyObj): SubjectSummary[] {
  * @param hass
  * @returns total cound of unconfirmed makrs.
  */
-export function count_unconfirmed(attrs: AnyObj, hass: any): number {
+export function count_unconfirmed(attrs: AnyObj, hass: any): Array<string> {
 
   const src: Record<string, any> = attrs.attributes.sensor_map;
-  console.log(src)
   const count = Object.values(src)
     .map(s => getSubjectInfoAndMarskFromSensor(hass, s).marks)
     .flat()
     .filter(mark => !mark.confirmed)
-    .length;
+    .map(m => m.id as string);
 
   return count
+}
+
+export async function signMarks(child_key: string, subjects: Array<string>, hass: any) {
+
+  try {
+    await hass.callService("bakalari", "sign_all_marks", {
+      child_key: child_key,
+      subjects: subjects
+    });
+  }
+  catch (err) {
+    toast_msg("Nepodařilo se podepsat známky. (" + err + ")", 4000)
+  }
 }
