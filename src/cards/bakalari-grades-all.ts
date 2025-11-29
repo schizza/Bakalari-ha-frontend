@@ -54,6 +54,7 @@ import {
   sortSubjects,
   count_unconfirmed,
   signMarks,
+  getSubjectInfoAndMarskFromSensor,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
 import { formatDateOnly, safeNum as formatSafeNum } from "./shared/format";
@@ -333,11 +334,14 @@ export class BakalariGradesAllCard extends LitElement {
   }
 
   /**
-   * TODO: Fix auto expand
+   * TODO:  Will need to make config variable for this.
+   *
+   * This will expand all marks new then configured date
+   *
    * @param attrs
    * @returns
    */
-  private _applyAutoExpand(attrs: AnyObj) {
+  private _applyAutoExpandByDate(attrs: AnyObj) {
     const days = Math.max(0, Number(this._config.auto_expand_days || 7));
     if (!days) return;
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
@@ -351,6 +355,37 @@ export class BakalariGradesAllCard extends LitElement {
         changed = true;
       }
     }
+    if (changed && this._config.persist_open_subjects !== false) {
+      this._persist?.saveSet("open_subjects", this._openSubjects);
+    }
+    this._autoApplied = true;
+  }
+
+  /**
+   * Auto expand subjects with unsigned marks
+   * 
+   * @param sensor_map
+   */
+
+  private _applyAutoExpand(sensor_map: AnyObj) {
+
+    const marks: Array<RecentMark> = Object.values(sensor_map)
+      .flatMap(sensor => getSubjectInfoAndMarskFromSensor(this.hass, sensor).marks)
+
+    const grouped = groupMarksBySubject(marks);
+    let changed = false;
+
+    for (const [key, val] of grouped.entries()) {
+      if (!val || !val.length) continue;
+
+
+      const hasUnsigned = val.some((m) => !m.confirmed)
+      if (hasUnsigned && !this._openSubjects.has(sensor_map[key])) {
+        this._openSubjects.add(sensor_map[key]);
+        changed = true;
+      }
+    }
+
     if (changed && this._config.persist_open_subjects !== false) {
       this._persist?.saveSet("open_subjects", this._openSubjects);
     }
@@ -463,7 +498,7 @@ export class BakalariGradesAllCard extends LitElement {
     const unconfirmed: Array<string> = count_unconfirmed(stateObj, this.hass);
 
     if (this._autoExpandNew && !this._autoApplied) {
-      this._applyAutoExpand(attrs);
+      this._applyAutoExpand(stateObj.attributes?.sensor_map);
     }
 
     const subjects = this._config.show_subjects !== false ? this._subjectsBlock() : null;
@@ -481,13 +516,13 @@ export class BakalariGradesAllCard extends LitElement {
           <div class="tools">
             <button class="btn" @click=${() => this._expandAll()}>Rozbalit vše</button>
             <button class="btn" @click=${() => this._collapseAll()}>Sbalit vše</button>
-            <label class="switch" title="Automaticky rozbalit předměty s novými známkami">
+            <label class="switch" title="Automaticky rozbalit předměty s nepodepsanými známkami">
               <input
                 type="checkbox"
                 .checked=${this._autoExpandNew}
                 @change=${(e: any) => this._onToggleAutoExpand(e)}
               />
-              <span>Auto-rozbalit nové</span>
+              <span>Auto-rozbalit nepodepsané</span>
             </label>
           </div>
           <div class="summary">
