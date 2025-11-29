@@ -245,10 +245,9 @@ export class BakalariGradesAllEditor extends LitElement {
         case "reflect_subjects_in_recent":
           return "Reflektovat výběr předmětů u posledních známek";
         case "auto_expand_new":
-          return "Auto-rozbalit předměty s novými známkami";
+          return "Auto-rozbalit předměty s nepodepsanými známkami";
         case "auto_expand_days":
           return "Kolik dní zpět je 'nové'";
-          return "Vynechat ID předmětů (čárkami)";
       }
       return undefined;
     };

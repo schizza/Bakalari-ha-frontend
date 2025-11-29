@@ -143,12 +143,12 @@ export function extractAllMarks(attrs: AnyObj): RecentMark[] {
  * Group marks by subject key and sort each subject's marks by date desc.
  */
 export function groupMarksBySubject(
-  attrs: AnyObj,
+  marks: AnyObj,
 ): Map<string, RecentMark[]> {
   const grouped = new Map<string, RecentMark[]>();
-  const rec: RecentMark[] = extractAllMarks(attrs);
+  // const rec: RecentMark[] = extractAllMarks(attrs);
 
-  for (const m of rec) {
+  for (const m of Object.values(marks)) {
     const key = subjectKeyFromMark(m);
     if (!key) continue;
     const arr = grouped.get(key) || [];
