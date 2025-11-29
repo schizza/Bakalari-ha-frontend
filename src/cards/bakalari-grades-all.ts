@@ -53,6 +53,7 @@ import {
   getRecentMarks,
   sortSubjects,
   count_unconfirmed,
+  signMarks,
 } from "./bakalari-grades-all/subject-utils";
 import { createPersist } from "./bakalari-grades-all/persist";
 import { formatDateOnly, safeNum as formatSafeNum } from "./shared/format";
@@ -70,6 +71,8 @@ registerCard(
 );
 
 import type { AnyObj, RecentMark } from "./bakalari-grades-all/subject-utils";
+import { signature } from "./shared/icons";
+import { get_child_key } from "./shared/utisl";
 
 /**
  * Core configuration for the Bakaláři grades card.
@@ -186,6 +189,7 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _autoApplied: boolean = false;
   private _persist: any = null;
   @state() private accessor _listOfSensorNames: string[] = [];
+  private _child_key: string = "";
 
   static styles = styles;
 
@@ -205,6 +209,7 @@ export class BakalariGradesAllCard extends LitElement {
       ) {
         this._listOfSensorNames = next;
       }
+      this._child_key = get_child_key(this._config.entity, this.hass)
     }
   }
 
@@ -414,6 +419,8 @@ export class BakalariGradesAllCard extends LitElement {
                 .mark=${m}
                 .showColors=${this._config.show_colors !== false}
                 .formatDate=${(iso: string) => formatDateOnly(iso, { locale: this.hass?.locale?.language || undefined })}
+                .hass=${this.hass}
+                .child_key=${this._child_key}
               ></bka-recent-item>
             `;
       },
@@ -453,7 +460,7 @@ export class BakalariGradesAllCard extends LitElement {
     const avg = this._safeNum(attrs.avg, 3);
     const wavg = this._safeNum(attrs.wavg, 3);
     const icon = this._icon(attrs);
-    const unconfirmed = count_unconfirmed(stateObj, this.hass);
+    const unconfirmed: Array<string> = count_unconfirmed(stateObj, this.hass);
 
     if (this._autoExpandNew && !this._autoApplied) {
       this._applyAutoExpand(attrs);
@@ -508,9 +515,11 @@ export class BakalariGradesAllCard extends LitElement {
                   >`
         : null}
             <span class="chip">
-              <span class="label">Nepodepsané<strong> ${unconfirmed}</strong></span>
-
+              <span class="label">Nepodepsané<strong> ${unconfirmed.length}</strong></span>
             </span>
+            ${unconfirmed.length > 0 ? html`<span class=label" title="Podepsat vše" @click=${() => signMarks(this._child_key, unconfirmed, this.hass)}>${signature("icon-sig")}</span>`
+        : null
+      }
             </div>
           </div>
 

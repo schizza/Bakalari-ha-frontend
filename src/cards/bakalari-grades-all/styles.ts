@@ -13,8 +13,25 @@ ha-card {
 }
 
 .icon {
-  widht: 15px;
+  width: 15px;
   height: 15px;
+  vertical-align: middle;
+}
+
+.icon-sig {
+  width: 20px;
+  height: 20px;
+  color: color-mix(in oklab, var(--accent-color) 35%, var(--primary-text-color) 65%);
+  transition: color 120ms ease, background-color 120ms ease, transform 120ms ease;
+  border-radius: 6px;
+  padding: 2px;
+  vertical-align: middle;
+}
+
+.icon-sig:hover {
+  color: color-mix(in oklab, var(--accent-color) 85%, var(--primary-text-color) 15%);
+  background: color-mix(in oklab, var(--accent-color) 18%, transparent);
+  transform: translateY(-0.5px);
 }
 
 .wrap {
@@ -375,8 +392,8 @@ ha-card {
   display: grid;
   grid-template-columns: auto 1fr auto;
   grid-template-areas:
-    "mark title date"
-    "mark theme theme";
+    "mark title date icons"
+    "mark theme theme theme";
   column-gap: 10px;
   row-gap: 4px;
   align-items: center;
@@ -416,6 +433,12 @@ ha-card {
   font-size: 0.9rem;
   text-align: right;
   white-space: nowrap;
+  margin-left: 8px;
+}
+
+.item .icons {
+  grid-area: icons;
+  text-align: center;
   margin-left: 8px;
 }
 
