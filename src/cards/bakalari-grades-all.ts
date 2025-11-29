@@ -72,8 +72,8 @@ registerCard(
 );
 
 import type { AnyObj, RecentMark } from "./bakalari-grades-all/subject-utils";
-import { signature } from "./shared/icons";
-import { get_child_key } from "./shared/utisl";
+import { signature, spinner } from "./shared/icons";
+import { get_child_key, runWithPending } from "./shared/utils";
 
 /**
  * Core configuration for the Bakaláři grades card.
@@ -190,6 +190,7 @@ export class BakalariGradesAllCard extends LitElement {
   @state() private accessor _autoApplied: boolean = false;
   private _persist: any = null;
   @state() private accessor _listOfSensorNames: string[] = [];
+  @state() accessor _pendingSign: boolean = false;
   private _child_key: string = "";
 
   static styles = styles;
@@ -363,7 +364,7 @@ export class BakalariGradesAllCard extends LitElement {
 
   /**
    * Auto expand subjects with unsigned marks
-   * 
+   *
    * @param sensor_map
    */
 
@@ -418,6 +419,7 @@ export class BakalariGradesAllCard extends LitElement {
                 .hass=${this.hass}
                 .openKeys=${this._openSubjects}
                 .showColors=${this._config.show_colors !== false}
+                ._child_key=${this._child_key}
                 @toggle-subject=${(e: CustomEvent<{ key: string }>) =>
           this._toggleSubject(e.detail.key, e)}
               ></bka-subject-card-new>
@@ -462,6 +464,14 @@ export class BakalariGradesAllCard extends LitElement {
     )}
       </div>
     `;
+  }
+  private async _signMarks(e: Event, child_key: string, unconfirmed: Array<string>) {
+    e?.stopPropagation?.();
+    if (!child_key || this._pendingSign || !unconfirmed) return;
+
+    await runWithPending((v: boolean) => (this._pendingSign = v),
+      signMarks(child_key, unconfirmed, this.hass),
+      500);
   }
 
   /**
@@ -522,7 +532,7 @@ export class BakalariGradesAllCard extends LitElement {
                 .checked=${this._autoExpandNew}
                 @change=${(e: any) => this._onToggleAutoExpand(e)}
               />
-              <span>Auto-rozbalit nepodepsané</span>
+              <span>Rozbal nepodepsané</span>
             </label>
           </div>
           <div class="summary">
@@ -552,15 +562,15 @@ export class BakalariGradesAllCard extends LitElement {
             <span class="chip">
               <span class="label">Nepodepsané<strong> ${unconfirmed.length}</strong></span>
             </span>
-            ${unconfirmed.length > 0 ? html`<span class=label" title="Podepsat vše" @click=${() => signMarks(this._child_key, unconfirmed, this.hass)}>${signature("icon-sig")}</span>`
+            ${unconfirmed.length > 0 ? html`<span class=label" title="Podepsat vše" @click=${(e: Event) => this._signMarks(e, this._child_key, unconfirmed)}> ${this._pendingSign ? spinner("icon-sig", 14) : signature("icon-sig")} </span>`
         : null
       }
             </div>
-          </div>
+  </div>
 
           ${sort_blok()}
-        </div>
-      </ha-card>
+</div>
+  </ha-card>
     `;
   }
 }
