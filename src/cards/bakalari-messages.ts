@@ -22,7 +22,9 @@ import { classMap } from "lit/directives/class-map.js";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { createPersist } from "./bakalari-grades-all/persist";
 import { formatDateOnly } from "./shared/format";
-import { signature } from "./shared/icons";
+import { signature, spinner } from "./shared/icons";
+import { runWithPending } from "./shared/utils";
+import { signMessage } from "./bakalari-messages/utils";
 
 export const CARD_VERSION = "0.3.0";
 export const CARD_TYPE = "bakalari-messages-card";
@@ -85,8 +87,7 @@ export class BakalariMessagesCard extends LitElement {
   @state() private accessor _openIds: Set<string> = new Set();
   @state() private accessor _query: string = "";
   @state() private accessor _onlyUnread: boolean = false;
-  @state() private accessor _loadingIds: Set<string> = new Set();
-  @state() private accessor _optimisticRead: Set<string> = new Set();
+  @state() private accessor _isWaiting: boolean = false;
 
   private _persist: ReturnType<typeof createPersist> | null = null;
   private _searchTimer: number | undefined;
@@ -192,35 +193,6 @@ export class BakalariMessagesCard extends LitElement {
     );
     return messages as MessageItem[];
   }
-
-  private _filtered(messages: MessageItem[]): MessageItem[] {
-    let arr = Array.isArray(messages) ? messages.slice() : [];
-    const q = (this._query || "").toLowerCase().trim();
-    if (q) {
-      arr = arr.filter(
-        (m) =>
-          (m.title || "").toLowerCase().includes(q) ||
-          (m.sender || "").toLowerCase().includes(q) ||
-          (m.text || "").toLowerCase().includes(q),
-      );
-    }
-    if (this._onlyUnread) arr = arr.filter((m) => m.read === false);
-
-    const asc = (this._config.sort || "desc").toLowerCase() === "asc";
-    arr.sort((a, b) => {
-      const at = new Date(a.sent || 0).getTime();
-      const bt = new Date(b.sent || 0).getTime();
-      return at - bt;
-    });
-    if (!asc) arr.reverse();
-
-    const limit = Math.max(0, Number(this._config.limit || 0));
-    if (limit > 0) arr = arr.slice(0, limit);
-
-    return arr;
-  }
-
-  // ---- Safe HTML helpers ----
 
   private _filtered(messages: MessageItem[]): MessageItem[] {
     let arr = Array.isArray(messages) ? messages.slice() : [];
@@ -381,58 +353,17 @@ export class BakalariMessagesCard extends LitElement {
     const entityId = this._config?.entity || "";
     if (!id || !msgId || !entityId || !this.hass) return;
 
-    // Optional artificial delay for dev/testing (set in YAML: dev_delay_ms)
-    const delay = 2000;
-    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+    runWithPending((v: boolean) => this._isWaiting = v, signMessage(msgId, child_key, this.hass), 1000)
 
-    // set loading + optimistic read
-    const nextLoading = new Set(this._loadingIds);
-    nextLoading.add(id);
-    this._loadingIds = nextLoading;
-
-    const nextOpt = new Set(this._optimisticRead);
-    nextOpt.add(id);
-    this._optimisticRead = nextOpt;
-
-    try {
-      if (delay) await sleep(delay);
-      // Mark the message as read (expects a service provided by the Bakaláři integration)
-      console.log("Calling service: " + entityId + " with msg id: " + msgId + " child_key: " + child_key)
-      await this.hass.callService("bakalari", "mark_message_as_read", {
-        entity_id: entityId,
-        message_id: msgId,
-        child_key: child_key
-      });
-
-      this._toast("Zpráva označena jako přečtená.");
-    } catch (err) {
-      // revert optimistic on error
-      const backOpt = new Set(this._optimisticRead);
-      backOpt.delete(id);
-      this._optimisticRead = backOpt;
-
-      this._toast("Nepodařilo se označit zprávu jako přečtenou.", 4000);
-      console.warn("Failed to call bakalari.mark_message_read", err);
-    }
     // refresh!!
-    try {
-      if (delay) await sleep(delay);
-      // Refresh the entity to fetch updated messages
-      await this.hass.callService("bakalari", "_srv_mark_message_as_read", {
-        entity_id: entityId, message_id: msgId, child_key: child_key
-      });
-    } catch (err) {
-      console.warn("Failed to refresh entity", err);
-    } finally {
-      const doneLoading = new Set(this._loadingIds);
-      doneLoading.delete(id);
-      this._loadingIds = doneLoading;
-    }
+    //
+    // runWithAwait
+    //
   }
+
   private _toggleOpen(id: string, e?: Event) {
     e?.stopPropagation?.();
     if (!id) return;
-    if (this._loadingIds.has(id)) return; // ignore toggling while loading
     const next = new Set(this._openIds);
     if (next.has(id)) next.delete(id);
     else next.add(id);
@@ -517,7 +448,7 @@ export class BakalariMessagesCard extends LitElement {
         <div class="wrap">
           ${!this._error
         ? list.length
-          ? html`<div class=${classMap({ list: true, unreadOff: !list.some((m) => m.read === false && !this._optimisticRead.has(this._computeId(m))) })}>
+          ? html`<div class=${classMap({ list: true, unreadOff: !list.some((m) => m.read === false) })}>
                   ${repeat(
             list,
             (m) => this._computeId(m),
@@ -530,19 +461,20 @@ export class BakalariMessagesCard extends LitElement {
               const htmlText = this._textHtmlFor(m);
 
               return html`<div class=${classMap({ item: true, open })} data-id=${id}>
-                        <div class=${classMap({ row: true, loading: this._loadingIds.has(id) })} style=${this._loadingIds.has(id) ? "cursor: progress;" : ""} @click=${(e: Event) => this._toggleOpen(id, e)}>
-                          <div class="bullet" style=${(m.read === false && !this._optimisticRead.has(id)) ? "" : "opacity:0.15;"}></div>
+                        <div class=${classMap({ row: true })}  @click=${(e: Event) => this._toggleOpen(id, e)}>
+                          ${m.read ? nothing : html`<div class="bullet" style="opacity:0.15;"}></div>`}
                           <div class="meta">
                             <div class="titleline">${m.title || "Bez předmětu"}</div>
                             <div class="subline">${m.sender || "Neznámý odesílatel"}</div>
                           </div>
                           <div class="date">${this._fmtDate(m.sent || "")}</div>
-                          ${this._loadingIds.has(id)
-                  ? html`<div class="icon-sig" style="cursor: progress;" title="Označování…"><svg class="spinner" viewBox="0 0 50 50" width="24" height="24" role="img" aria-label="Načítání"><circle cx="25" cy="25" r="20" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="90 150"><animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite"/></circle></svg></div>`
-                  : html`<div class="icon-sig" style="cursor: pointer;" title="Označit jako přečtené" @click=${(e: Event) => this._signMessage(id, (m?.mid) ? String(m.mid) : "", m.child_key ?? "", e)}>${signature("icon-sig")}</div>`}
+                          ${m.read ? nothing : html`
+                          <div class=icon-sig @click=${(e: Event) => this._signMessage(id, m!.mid ? String(m.mid) : "", m.child_key ?? "", e)}>
+                            ${this._isWaiting ? spinner("icon-sig", 14) : signature("icon-sig")}
+                          </div>`}
                         </div>
-                        <div class="body">
-                          <div class="text">${unsafeHTML(htmlText)}</div>
+            <div class= "body">
+            <div class="text"> ${unsafeHTML(htmlText)} </div>
                           ${safeAtts.length
                   ? html`<div class="attachments">
                                 <span class="tag">Přílohy</span>
@@ -556,16 +488,18 @@ export class BakalariMessagesCard extends LitElement {
                   })}
                                 </ul>
                               </div>`
-                  : nothing}
-                        </div>
-                      </div>`;
+                  : nothing
+                }
+          </div>
+          </div>`;
             },
-          )}
-                </div>`
+          )
+            }
+</div>`
           : html`<div class="empty">Žádné zprávy k zobrazení.</div>`
         : nothing}
-        </div>
-      </ha-card>
+</div>
+  </ha-card>
     `;
   }
 }

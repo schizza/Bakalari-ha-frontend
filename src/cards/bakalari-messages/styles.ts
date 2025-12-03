@@ -6,6 +6,23 @@ import { css } from "lit";
  * Keep these styles in sync with the structure in `bakalari-messages.ts`.
  */
 export default css`
+
+  .icon-sig {
+    width: 20px;
+    height: 20px;
+    color: color-mix(in oklab, var(--accent-color) 35%, var(--primary-text-color) 65%);
+    transition: color 120ms ease, background-color 120ms ease, transform 120ms ease;
+    border-radius: 6px;
+    padding: 2px;
+    vertical-align: middle;
+  }
+
+  .icon-sig:hover {
+    color: color-mix(in oklab, var(--accent-color) 85%, var(--primary-text-color) 15%);
+    background: color-mix(in oklab, var(--accent-color) 18%, transparent);
+    transform: translateY(-0.5px);
+  }
+
   :host {
     display: block;
   }
