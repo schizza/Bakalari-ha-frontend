@@ -1,5 +1,20 @@
 # Changelog
 
+# 0.7.0
+
+## ✨ Nové funkce
+
+**Refactor messages, add callService option (#65) @schizza**
+- přidává možnost označit zprávu jako přečtenou
+- refaktor `bakalari-messages` do formátu `Lit`
+
+---
+## 📦 Technické
+- Verze: `v0.7.0`
+- Vyžaduje backend: `1.5.0+`
+- Vyžaduje API: `0.9.0`
+- Autoři: @schizza
+
 # 0.6.0
 
 ## ✨ Nové funkce
